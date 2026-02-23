@@ -1,0 +1,66 @@
+import { v4 as uuidv4 } from 'uuid';
+
+export interface ChatMessage {
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp?: number;
+}
+
+export interface Session {
+    id: string;
+    isPaid: boolean;
+    txHash?: string;
+    jobId?: string;
+    messages: ChatMessage[];
+    createdAt: number;
+    fileIds: string[];
+}
+
+export class SessionStore {
+    private sessions: Map<string, Session> = new Map();
+
+    createSession(): Session {
+        const session: Session = {
+            id: uuidv4(),
+            isPaid: false,
+            messages: [],
+            createdAt: Date.now(),
+            fileIds: [],
+        };
+        this.sessions.set(session.id, session);
+        return session;
+    }
+
+    getSession(id: string): Session | undefined {
+        return this.sessions.get(id);
+    }
+
+    markPaid(id: string, txHash: string, jobId: string): void {
+        const session = this.sessions.get(id);
+        if (!session) {
+            throw new Error(`Session not found: ${id}`);
+        }
+        session.isPaid = true;
+        session.txHash = txHash;
+        session.jobId = jobId;
+    }
+
+    addMessage(id: string, message: ChatMessage): void {
+        const session = this.sessions.get(id);
+        if (!session) {
+            throw new Error(`Session not found: ${id}`);
+        }
+        session.messages.push({
+            ...message,
+            timestamp: message.timestamp ?? Date.now(),
+        });
+    }
+
+    addFileId(id: string, fileId: string): void {
+        const session = this.sessions.get(id);
+        if (!session) {
+            throw new Error(`Session not found: ${id}`);
+        }
+        session.fileIds.push(fileId);
+    }
+}

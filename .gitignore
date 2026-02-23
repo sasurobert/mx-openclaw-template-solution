@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+
+# Secrets (NEVER commit these)
+wallet.pem
+.env
+
+# Runtime data
+uploads/
+reports/
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+caddy_data/
+caddy_config/
+
+# Coverage & test artifacts
+coverage/
+.nyc_output/
