@@ -46,90 +46,100 @@ fail() { echo -e "  ${RED}❌ $1${NC}"; exit 1; }
 OPENCLAW_SKILLS_REPO="sasurobert/multiversx-openclaw-skills"
 OPENCLAW_TEMPLATE_REPO="sasurobert/mx-openclaw-template-solution"
 OPENCLAW_BRANCH="master"
-OPENCLAW_RAW="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/${OPENCLAW_BRANCH}"
+OPENCLAW_HOME="${HOME}/.openclaw"
+OPENCLAW_WORKSPACE="${OPENCLAW_HOME}/workspace"
+SKILLS_INSTALL_URL="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/refs/heads/${OPENCLAW_BRANCH}/scripts/install.sh"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 0: Install / Update OpenClaw Platform + MultiversX Skills
+# STEP 0: Install OpenClaw Platform + MultiversX Agent Skills
 # ══════════════════════════════════════════════════════════════════════════════
-step "0/10" "Install / Update OpenClaw Platform + MultiversX Skills"
+step "0/10" "Install OpenClaw Platform + MultiversX Agent Skills"
 
 cd "$ROOT_DIR"
 
 # ── 0a: Install or update the official OpenClaw platform ────────────────────
-echo -e "  ${BOLD}Checking OpenClaw platform...${NC}"
+echo -e "  ${BOLD}[0a] OpenClaw platform...${NC}"
 
 if command -v openclaw &>/dev/null; then
   CURRENT_OC=$(openclaw --version 2>/dev/null || echo "unknown")
-  info "OpenClaw already installed: $CURRENT_OC"
+  info "OpenClaw installed: $CURRENT_OC"
 
-  # Check for latest release
-  LATEST_OC=$(curl -sf "https://api.github.com/repos/openclaw/openclaw/releases/latest" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4 || echo "")
+  LATEST_OC=$(curl -sf "https://api.github.com/repos/openclaw/openclaw/releases/latest" 2>/dev/null \
+    | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4 || echo "")
   if [ -n "$LATEST_OC" ] && [ "$LATEST_OC" != "v$CURRENT_OC" ]; then
     warn "OpenClaw update available: $CURRENT_OC → $LATEST_OC"
     read -p "  Update now? [Y/n]: " UPDATE_OC
     if [ "${UPDATE_OC:-Y}" != "n" ] && [ "${UPDATE_OC:-Y}" != "N" ]; then
-      npm install -g openclaw@latest && ok "OpenClaw updated to latest" || warn "Update failed — continuing with current version"
+      npm install -g openclaw@latest && ok "OpenClaw updated" || warn "Update failed — continuing"
     fi
   else
     ok "OpenClaw is up to date"
   fi
 else
-  echo -e "  Installing OpenClaw platform (npm install -g openclaw@latest)..."
+  echo -e "  Installing OpenClaw (npm install -g openclaw@latest)..."
   npm install -g openclaw@latest && ok "OpenClaw installed" || fail "Could not install OpenClaw. Requires Node ≥22."
 fi
 
-# ── 0b: Onboard OpenClaw (Gateway daemon) ───────────────────────────────────
-echo -e "  ${BOLD}Checking OpenClaw Gateway...${NC}"
+# ── 0b: Onboard OpenClaw Gateway ───────────────────────────────────────────
+echo -e "  ${BOLD}[0b] OpenClaw Gateway daemon...${NC}"
 
-OPENCLAW_HOME="${HOME}/.openclaw"
 if [ ! -d "$OPENCLAW_HOME" ]; then
   echo -e "  Running first-time onboarding..."
-  openclaw onboard --install-daemon 2>&1 && ok "OpenClaw Gateway onboarded" || warn "Onboarding incomplete — run 'openclaw onboard' manually"
+  openclaw onboard --install-daemon 2>&1 && ok "Gateway onboarded" || warn "Onboarding incomplete — run 'openclaw onboard' manually"
 else
-  info "OpenClaw home exists: $OPENCLAW_HOME"
-  # Run doctor to check health
-  openclaw doctor 2>/dev/null && ok "OpenClaw doctor: healthy" || warn "OpenClaw doctor reported issues — run 'openclaw doctor' to review"
+  info "OpenClaw home: $OPENCLAW_HOME"
+  openclaw doctor 2>/dev/null && ok "openclaw doctor: healthy" || warn "Issues detected — run 'openclaw doctor'"
 fi
 
-# Discover workspace
-OPENCLAW_WORKSPACE="${OPENCLAW_HOME}/workspace"
 mkdir -p "${OPENCLAW_WORKSPACE}/skills"
 ok "Workspace: $OPENCLAW_WORKSPACE"
 
-# ── 0c: Install MultiversX OpenClaw Skills (official installer) ─────────────
-echo -e "  ${BOLD}Installing MultiversX OpenClaw Skills...${NC}"
+# ── 0c: Install MultiversX skills (official installer) ─────────────────────
+#   This downloads SKILL.md + reference docs + clones moltbot-starter-kit
+#   into .agent/skills/multiversx/ (relative to CWD)
+#   We run it from the workspace so everything lands in the right place.
+echo -e "  ${BOLD}[0c] MultiversX OpenClaw Skills + moltbot-starter-kit...${NC}"
 
-# Use the official install script from multiversx-openclaw-skills
-# This downloads SKILL.md, reference docs, and clones moltbot-starter-kit
-curl -sL "https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/refs/heads/${OPENCLAW_BRANCH}/scripts/install.sh" | bash \
-  && ok "MultiversX OpenClaw Skills installed (via official installer)" \
-  || warn "Skills install failed — run manually: curl -sL https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/refs/heads/${OPENCLAW_BRANCH}/scripts/install.sh | bash"
+cd "$OPENCLAW_WORKSPACE"
+curl -sL "$SKILLS_INSTALL_URL" | bash \
+  && ok "Skills installed → ${OPENCLAW_WORKSPACE}/.agent/skills/multiversx/" \
+  || warn "Skills install failed — run manually: curl -sL $SKILLS_INSTALL_URL | bash"
+cd "$ROOT_DIR"
 
-# ── 0d: Check for template updates ─────────────────────────────────────────
-echo -e "  ${BOLD}Checking template version...${NC}"
+# Convenience symlink so the project can reference the installed kit
+MOLTBOT_KIT="${OPENCLAW_WORKSPACE}/.agent/skills/multiversx/moltbot-starter-kit"
+if [ -d "$MOLTBOT_KIT" ] && [ ! -L "$ROOT_DIR/.moltbot" ]; then
+  ln -sfn "$MOLTBOT_KIT" "$ROOT_DIR/.moltbot"
+  ok "Symlink: .moltbot → moltbot-starter-kit"
+fi
 
-LATEST_TAG=$(curl -sf "https://api.github.com/repos/${OPENCLAW_TEMPLATE_REPO}/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+# ── 0d: Configure moltbot-starter-kit .env ─────────────────────────────────
+#   The starter kit needs its own .env with contract addresses and wallet path.
+#   We'll write this AFTER Step 1 (key collection), but prepare the path now.
+echo -e "  ${BOLD}[0d] Checking moltbot-starter-kit config...${NC}"
+
+if [ -d "$MOLTBOT_KIT" ]; then
+  ok "moltbot-starter-kit found at: $MOLTBOT_KIT"
+else
+  warn "moltbot-starter-kit not found — some skills may not work. Install manually."
+fi
+
+# ── 0e: Check for template updates ────────────────────────────────────────
+echo -e "  ${BOLD}[0e] Template version check...${NC}"
+
+LATEST_TAG=$(curl -sf "https://api.github.com/repos/${OPENCLAW_TEMPLATE_REPO}/tags" 2>/dev/null \
+  | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
 LOCAL_VERSION=$(grep '"version"' package.json 2>/dev/null | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || echo "1.0.0")
 
 if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "v$LOCAL_VERSION" ] && [ "$LATEST_TAG" != "$LOCAL_VERSION" ]; then
-  warn "Template update available: $LOCAL_VERSION → $LATEST_TAG"
-  echo "     View: https://github.com/${OPENCLAW_TEMPLATE_REPO}/releases/tag/$LATEST_TAG"
+  warn "Template update: $LOCAL_VERSION → $LATEST_TAG"
+  echo "     https://github.com/${OPENCLAW_TEMPLATE_REPO}/releases/tag/$LATEST_TAG"
 else
   ok "Template up to date (v$LOCAL_VERSION)"
 fi
 
-# ── 0e: Update contract ABIs ───────────────────────────────────────────────
-ABI_DIR="backend/src/mx/abis"
-if [ -d "$ABI_DIR" ]; then
-  for abi in identity-registry validation-registry reputation-registry escrow; do
-    curl -sL "${OPENCLAW_RAW}/references/${abi}.abi.json" > "/tmp/${abi}.abi.json" 2>/dev/null
-    [ -s "/tmp/${abi}.abi.json" ] && cp "/tmp/${abi}.abi.json" "${ABI_DIR}/${abi}.abi.json"
-  done
-  ok "Contract ABIs checked"
-fi
-
 echo ""
-ok "OpenClaw platform + MultiversX skills ready — proceeding with agent setup"
+ok "OpenClaw platform + MultiversX skills ready"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1: Collect keys and configuration
@@ -267,6 +277,51 @@ cat > agent.config.json << EOF
 }
 EOF
 ok "agent.config.json written"
+
+# Configure moltbot-starter-kit in the OpenClaw workspace
+MOLTBOT_KIT="${OPENCLAW_WORKSPACE}/.agent/skills/multiversx/moltbot-starter-kit"
+if [ -d "$MOLTBOT_KIT" ]; then
+  cat > "$MOLTBOT_KIT/.env" << MOLTEOF
+# Generated by launch.sh — $(date)
+# Moltbot Starter Kit config (inside OpenClaw workspace)
+MULTIVERSX_CHAIN_ID=$CHAIN_ID
+MULTIVERSX_API_URL=$API_URL
+MULTIVERSX_EXPLORER_URL=$EXPLORER
+MULTIVERSX_PRIVATE_KEY=$ROOT_DIR/wallet.pem
+
+IDENTITY_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+VALIDATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+REPUTATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+ESCROW_CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+
+X402_FACILITATOR_URL=http://localhost:4000
+MULTIVERSX_RELAYER_URL=http://localhost:3001
+MOLTEOF
+  ok "moltbot-starter-kit .env configured"
+fi
+
+# Generate OpenClaw workspace config (~/.openclaw/openclaw.json)
+# Maps the user's LLM choice to the OpenClaw agent model config
+case "$LLM_PROVIDER" in
+  openai)    OC_MODEL="openai/$LLM_MODEL" ;;
+  anthropic) OC_MODEL="anthropic/$LLM_MODEL" ;;
+  google)    OC_MODEL="google/$LLM_MODEL" ;;
+  *)         OC_MODEL="openai/gpt-4o" ;;
+esac
+
+OPENCLAW_CONFIG="${OPENCLAW_HOME}/openclaw.json"
+if [ ! -f "$OPENCLAW_CONFIG" ]; then
+  cat > "$OPENCLAW_CONFIG" << OCEOF
+{
+  "agent": {
+    "model": "$OC_MODEL"
+  }
+}
+OCEOF
+  ok "openclaw.json created with model: $OC_MODEL"
+else
+  info "openclaw.json already exists — not overwriting"
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 3: Install dependencies

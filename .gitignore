@@ -96,3 +96,4 @@ playwright-report/
 *.tar.gz
 agent.config.json
 .agent/
+.moltbot
