@@ -8,17 +8,18 @@ import {
   Address,
   TransactionComputer,
   VariadicValue,
+  BytesValue,
 } from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { ApiNetworkProvider } from '@multiversx/sdk-network-providers';
+import { UserSigner } from '@multiversx/sdk-wallet';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 import axios from 'axios';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
-import {createPatchedAbi} from '../utils/abi';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
+import { createPatchedAbi } from '../utils/abi';
 import * as identityAbiJson from '../abis/identity-registry.abi.json';
 
 const logger = new Logger('IdentitySkills');
@@ -30,19 +31,19 @@ export interface AgentDetails {
   uri: string;
   public_key: string;
   owner: Address;
-  metadata: Array<{key: string; value: string}>;
+  metadata: Array<{ key: string; value: string }>;
 }
 
 export interface RegisterAgentParams {
   name: string;
   uri: string;
-  metadata?: Array<{key: string; value: string}>;
+  metadata?: Array<{ key: string; value: string }>;
   useRelayer?: boolean;
 }
 
 export interface SetMetadataParams {
   agentNonce: number;
-  entries: Array<{key: string; value: string}>;
+  entries: Array<{ key: string; value: string }>;
 }
 
 // ─── Internals ─────────────────────────────────────────────────────────────────
@@ -57,7 +58,7 @@ async function loadSignerAndProvider() {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  return {signer, senderAddress, provider};
+  return { signer, senderAddress, provider };
 }
 
 // ─── register_agent ────────────────────────────────────────────────────────────
@@ -67,7 +68,7 @@ export async function registerAgent(
 ): Promise<string> {
   logger.info(`Registering agent: ${params.name}`);
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(identityAbiJson);
@@ -148,7 +149,7 @@ export async function setMetadata(params: SetMetadataParams): Promise<string> {
     `Setting ${params.entries.length} metadata entries for agent #${params.agentNonce}`,
   );
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(identityAbiJson);
@@ -161,7 +162,9 @@ export async function setMetadata(params: SetMetadataParams): Promise<string> {
     gasLimit: CONFIG.GAS_LIMITS.UPDATE,
     arguments: [
       BigInt(params.agentNonce),
-      VariadicValue.fromItemsCounted(), // metadata — TODO: populate from entries
+      VariadicValue.fromItemsCounted(
+        ...params.entries.flatMap(e => [BytesValue.fromUTF8(e.key), BytesValue.fromUTF8(e.value)]),
+      ),
       VariadicValue.fromItemsCounted(), // services
     ],
   });
