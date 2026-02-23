@@ -6,6 +6,8 @@
     "license": "MIT",
     "private": true,
     "scripts": {
+        "launch": "bash launch.sh",
+        "launch:local": "bash launch.sh --local",
         "setup": "bash scripts/setup.sh",
         "generate-wallet": "npx ts-node scripts/generate_wallet.ts",
         "register": "npx ts-node scripts/register.ts",
