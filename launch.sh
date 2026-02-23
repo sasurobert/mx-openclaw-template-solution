@@ -42,86 +42,120 @@ info() { echo -e "  ${BLUE}ℹ️  $1${NC}"; }
 warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
 fail() { echo -e "  ${RED}❌ $1${NC}"; exit 1; }
 
-# ── Official OpenClaw repo coordinates ──────────────────────────────────────
+# ── Official repo coordinates ───────────────────────────────────────────
 OPENCLAW_SKILLS_REPO="sasurobert/multiversx-openclaw-skills"
 OPENCLAW_TEMPLATE_REPO="sasurobert/mx-openclaw-template-solution"
 OPENCLAW_BRANCH="master"
 OPENCLAW_RAW="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/${OPENCLAW_BRANCH}"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 0: Pull latest OpenClaw release (always up to date)
+# STEP 0: Install / Update OpenClaw Platform + MultiversX Skills
 # ══════════════════════════════════════════════════════════════════════════════
-step "0/10" "Pull latest OpenClaw release"
+step "0/10" "Install / Update OpenClaw Platform + MultiversX Skills"
 
 cd "$ROOT_DIR"
 
-# ── 0a: Check for template updates ──────────────────────────────────────────
-echo -e "  ${BOLD}Checking for template updates...${NC}"
+# ── 0a: Install or update the official OpenClaw platform ────────────────────
+echo -e "  ${BOLD}Checking OpenClaw platform...${NC}"
+
+if command -v openclaw &>/dev/null; then
+  CURRENT_OC=$(openclaw --version 2>/dev/null || echo "unknown")
+  info "OpenClaw already installed: $CURRENT_OC"
+
+  # Check for latest release
+  LATEST_OC=$(curl -sf "https://api.github.com/repos/openclaw/openclaw/releases/latest" 2>/dev/null | grep -o '"tag_name":"[^"]*"' | cut -d'"' -f4 || echo "")
+  if [ -n "$LATEST_OC" ] && [ "$LATEST_OC" != "v$CURRENT_OC" ]; then
+    warn "OpenClaw update available: $CURRENT_OC → $LATEST_OC"
+    read -p "  Update now? [Y/n]: " UPDATE_OC
+    if [ "${UPDATE_OC:-Y}" != "n" ] && [ "${UPDATE_OC:-Y}" != "N" ]; then
+      npm install -g openclaw@latest && ok "OpenClaw updated to latest" || warn "Update failed — continuing with current version"
+    fi
+  else
+    ok "OpenClaw is up to date"
+  fi
+else
+  echo -e "  Installing OpenClaw platform (npm install -g openclaw@latest)..."
+  npm install -g openclaw@latest && ok "OpenClaw installed" || fail "Could not install OpenClaw. Requires Node ≥22."
+fi
+
+# ── 0b: Onboard OpenClaw (Gateway daemon) ───────────────────────────────────
+echo -e "  ${BOLD}Checking OpenClaw Gateway...${NC}"
+
+OPENCLAW_HOME="${HOME}/.openclaw"
+if [ ! -d "$OPENCLAW_HOME" ]; then
+  echo -e "  Running first-time onboarding..."
+  openclaw onboard --install-daemon 2>&1 && ok "OpenClaw Gateway onboarded" || warn "Onboarding incomplete — run 'openclaw onboard' manually"
+else
+  info "OpenClaw home exists: $OPENCLAW_HOME"
+  # Run doctor to check health
+  openclaw doctor 2>/dev/null && ok "OpenClaw doctor: healthy" || warn "OpenClaw doctor reported issues — run 'openclaw doctor' to review"
+fi
+
+# Discover workspace
+OPENCLAW_WORKSPACE="${OPENCLAW_HOME}/workspace"
+mkdir -p "${OPENCLAW_WORKSPACE}/skills"
+ok "Workspace: $OPENCLAW_WORKSPACE"
+
+# ── 0c: Install MultiversX OpenClaw Skills into workspace ───────────────────
+echo -e "  ${BOLD}Installing MultiversX OpenClaw Skills...${NC}"
+
+MVX_SKILL_DIR="${OPENCLAW_WORKSPACE}/skills/multiversx"
+MVX_MOLTBOT_DIR="${MVX_SKILL_DIR}/moltbot-starter-kit"
+
+mkdir -p "${MVX_SKILL_DIR}/references"
+
+# Download SKILL.md (agent instructions)
+curl -sL "${OPENCLAW_RAW}/SKILL.md" > "${MVX_SKILL_DIR}/SKILL.md" 2>/dev/null && ok "SKILL.md → ${MVX_SKILL_DIR}/" || warn "Could not fetch SKILL.md"
+
+# Download reference docs
+REFS="setup identity validation reputation escrow x402 manifest"
+REF_COUNT=0
+for ref in ${REFS}; do
+  if curl -sL "${OPENCLAW_RAW}/references/${ref}.md" > "${MVX_SKILL_DIR}/references/${ref}.md" 2>/dev/null; then
+    REF_COUNT=$((REF_COUNT + 1))
+  fi
+done
+ok "$REF_COUNT reference docs installed"
+
+# Clone or pull moltbot-starter-kit (implementation code)
+if [ -d "${MVX_MOLTBOT_DIR}/.git" ]; then
+  echo -e "  Pulling latest moltbot-starter-kit..."
+  (cd "${MVX_MOLTBOT_DIR}" && git pull --quiet 2>/dev/null) && ok "moltbot-starter-kit updated" || warn "Pull failed — using existing version"
+else
+  echo -e "  Cloning moltbot-starter-kit..."
+  git clone --quiet --depth 1 "https://github.com/sasurobert/moltbot-starter-kit.git" "${MVX_MOLTBOT_DIR}" 2>/dev/null && ok "moltbot-starter-kit cloned" || warn "Clone failed — continuing with bundled skills"
+fi
+
+# Install starter-kit deps
+if [ -f "${MVX_MOLTBOT_DIR}/package.json" ]; then
+  (cd "${MVX_MOLTBOT_DIR}" && npm install --silent 2>/dev/null) && ok "Skills dependencies installed" || warn "Could not install skills deps"
+fi
+
+# ── 0d: Check for template updates ─────────────────────────────────────────
+echo -e "  ${BOLD}Checking template version...${NC}"
 
 LATEST_TAG=$(curl -sf "https://api.github.com/repos/${OPENCLAW_TEMPLATE_REPO}/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
 LOCAL_VERSION=$(grep '"version"' package.json 2>/dev/null | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || echo "1.0.0")
 
 if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "v$LOCAL_VERSION" ] && [ "$LATEST_TAG" != "$LOCAL_VERSION" ]; then
   warn "Template update available: $LOCAL_VERSION → $LATEST_TAG"
-  echo "     View changes: https://github.com/${OPENCLAW_TEMPLATE_REPO}/releases/tag/$LATEST_TAG"
-  echo ""
+  echo "     View: https://github.com/${OPENCLAW_TEMPLATE_REPO}/releases/tag/$LATEST_TAG"
 else
-  ok "Template is up to date (v$LOCAL_VERSION)"
+  ok "Template up to date (v$LOCAL_VERSION)"
 fi
 
-# ── 0b: Install/update MultiversX OpenClaw Skills ──────────────────────────
-echo -e "  ${BOLD}Pulling latest MultiversX OpenClaw Skills...${NC}"
-
-SKILL_DIR=".agent/skills/multiversx"
-MOLTBOT_DIR="${SKILL_DIR}/moltbot-starter-kit"
-
-mkdir -p "${SKILL_DIR}/references"
-
-# Download SKILL.md (agent instructions)
-curl -sL "${OPENCLAW_RAW}/SKILL.md" > "${SKILL_DIR}/SKILL.md" 2>/dev/null && ok "SKILL.md updated" || warn "Could not fetch SKILL.md"
-
-# Download reference docs
-REFS="setup identity validation reputation escrow x402 manifest"
-REF_COUNT=0
-for ref in ${REFS}; do
-  if curl -sL "${OPENCLAW_RAW}/references/${ref}.md" > "${SKILL_DIR}/references/${ref}.md" 2>/dev/null; then
-    REF_COUNT=$((REF_COUNT + 1))
-  fi
-done
-ok "$REF_COUNT reference docs updated"
-
-# Clone or pull moltbot-starter-kit (implementation code)
-if [ -d "${MOLTBOT_DIR}/.git" ]; then
-  echo -e "  Pulling latest moltbot-starter-kit..."
-  (cd "${MOLTBOT_DIR}" && git pull --quiet 2>/dev/null) && ok "moltbot-starter-kit updated" || warn "Could not pull — using existing version"
-else
-  echo -e "  Cloning moltbot-starter-kit..."
-  git clone --quiet --depth 1 "https://github.com/sasurobert/moltbot-starter-kit.git" "${MOLTBOT_DIR}" 2>/dev/null && ok "moltbot-starter-kit cloned" || warn "Could not clone — continuing with bundled skills"
-fi
-
-# Install moltbot-starter-kit deps if present
-if [ -f "${MOLTBOT_DIR}/package.json" ]; then
-  (cd "${MOLTBOT_DIR}" && npm install --silent 2>/dev/null) && ok "Skills dependencies installed" || warn "Could not install skills deps"
-fi
-
-# ── 0c: Download latest contract ABIs ───────────────────────────────────────
-echo -e "  ${BOLD}Checking for latest contract ABIs...${NC}"
-
+# ── 0e: Update contract ABIs ───────────────────────────────────────────────
 ABI_DIR="backend/src/mx/abis"
 if [ -d "$ABI_DIR" ]; then
-  # Try to fetch updated ABIs from the skills repo
   for abi in identity-registry validation-registry reputation-registry escrow; do
-    if curl -sL "${OPENCLAW_RAW}/references/${abi}.abi.json" > "/tmp/${abi}.abi.json" 2>/dev/null && [ -s "/tmp/${abi}.abi.json" ]; then
-      cp "/tmp/${abi}.abi.json" "${ABI_DIR}/${abi}.abi.json"
-    fi
+    curl -sL "${OPENCLAW_RAW}/references/${abi}.abi.json" > "/tmp/${abi}.abi.json" 2>/dev/null
+    [ -s "/tmp/${abi}.abi.json" ] && cp "/tmp/${abi}.abi.json" "${ABI_DIR}/${abi}.abi.json"
   done
   ok "Contract ABIs checked"
-else
-  info "No ABI directory found — using bundled ABIs"
 fi
 
 echo ""
-ok "OpenClaw is up to date — proceeding with launch"
+ok "OpenClaw platform + MultiversX skills ready — proceeding with agent setup"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1: Collect keys and configuration
