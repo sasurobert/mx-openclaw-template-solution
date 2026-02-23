@@ -52,6 +52,8 @@ SKILLS_INSTALL_URL="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/re
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 0: Install OpenClaw Platform + MultiversX Agent Skills
+#   → When --local: installs everything on this machine
+#   → When deploying to VPS: skips local install (remote-setup.sh does it)
 # ══════════════════════════════════════════════════════════════════════════════
 step "0/10" "Install OpenClaw Platform + MultiversX Agent Skills"
 
@@ -381,16 +383,15 @@ NODE_ENV=test npx jest --forceExit --detectOpenHandles --silent && ok "Tests: AL
 step "8/10" "Provision VPS"
 
 if [ -z "$VPS_HOST" ] || [ "$LOCAL_ONLY" = true ]; then
-  info "No VPS configured — running locally only"
-  info "Start with: npm run dev"
+  info "No VPS — running locally only"
+  info "Start locally: cd backend && npm run dev"
 else
   echo -e "  ${BOLD}About to harden your VPS:${NC}"
-  echo "   • System updates"
+  echo "   • System updates + Node.js 22+"
   echo "   • Non-root user 'moltbot'"
   echo "   • SSH hardening (key-only, no root login)"
-  echo "   • UFW firewall (ports 22, 80, 443)"
-  echo "   • Fail2Ban"
-  echo "   • Docker + Docker Compose"
+  echo "   • UFW firewall (ports 22, 80, 443, 18789)"
+  echo "   • Fail2Ban + Docker + Docker Compose"
   echo ""
   read -p "  Proceed? [Y/n]: " PROVISION_CONFIRM
   if [ "${PROVISION_CONFIRM:-Y}" != "n" ] && [ "${PROVISION_CONFIRM:-Y}" != "N" ]; then
@@ -402,19 +403,39 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 9: Deploy to VPS
+# STEP 9: Deploy to VPS (remote-first: OpenClaw + skills + agent all on VPS)
 # ══════════════════════════════════════════════════════════════════════════════
-step "9/10" "Deploy to VPS"
+step "9/10" "Deploy full OpenClaw agent to VPS"
 
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
   DEPLOY_USER="moltbot"
-  # If we provisioned, use moltbot; otherwise use what they gave us
   [ "$VPS_USER" != "root" ] && DEPLOY_USER="$VPS_USER"
+  DEPLOY_TARGET="$DEPLOY_USER@$VPS_HOST"
+  AGENT_HOME="/opt/openclaw-agent"
 
-  cd "$ROOT_DIR"
-  bash infra/deploy.sh "$DEPLOY_USER@$VPS_HOST" "$DOMAIN" && ok "Deployed to VPS" || fail "Deployment failed"
+  echo -e "  ${BOLD}Uploading agent config to VPS...${NC}"
+
+  # Create the agent home on the VPS
+  ssh "$DEPLOY_TARGET" "sudo mkdir -p $AGENT_HOME && sudo chown $DEPLOY_USER:$DEPLOY_USER $AGENT_HOME"
+  ok "Agent home created: $AGENT_HOME"
+
+  # Upload everything the VPS needs
+  scp -q .env "$DEPLOY_TARGET:$AGENT_HOME/.env" && ok "Uploaded: .env"
+  scp -q wallet.pem "$DEPLOY_TARGET:$AGENT_HOME/wallet.pem" && ok "Uploaded: wallet.pem"
+  scp -q agent.config.json "$DEPLOY_TARGET:$AGENT_HOME/agent.config.json" && ok "Uploaded: agent.config.json"
+  scp -q infra/remote-setup.sh "$DEPLOY_TARGET:$AGENT_HOME/remote-setup.sh" && ok "Uploaded: remote-setup.sh"
+
+  echo ""
+  echo -e "  ${BOLD}Running full OpenClaw setup on VPS (this takes 2-5 min)...${NC}"
+  echo -e "  ${BLUE}  ↳ Installing Node.js 22+, OpenClaw, MultiversX Skills, template...${NC}"
+  echo ""
+
+  # Execute the remote setup script via SSH
+  ssh -t "$DEPLOY_TARGET" "chmod +x $AGENT_HOME/remote-setup.sh && sudo bash $AGENT_HOME/remote-setup.sh"
+
+  ok "Full OpenClaw agent deployed to VPS"
 else
-  info "No VPS — skipping deployment"
+  info "No VPS — skipping remote deployment"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -425,17 +446,23 @@ step "10/10" "Verify everything"
 echo ""
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
   # Remote health check
-  echo -e "  Checking https://$DOMAIN/api/health..."
-  sleep 5  # Give containers time to start
+  echo -e "  Waiting for services to start..."
+  sleep 5
+
+  echo -e "  Checking API health..."
   if curl -sf "https://$DOMAIN/api/health" > /dev/null 2>&1; then
-    ok "Health check: PASSED"
+    ok "HTTPS health check: PASSED"
+  elif curl -sf "http://$VPS_HOST:4000/api/health" > /dev/null 2>&1; then
+    ok "HTTP health check: PASSED — HTTPS will activate via Caddy"
   else
-    # Try HTTP fallback (SSL might still be provisioning)
-    if curl -sf "http://$VPS_HOST:4000/api/health" > /dev/null 2>&1; then
-      ok "Health check (HTTP): PASSED — HTTPS will activate shortly via Caddy"
-    else
-      warn "Health check: agent may still be starting — check 'npm run logs'"
-    fi
+    warn "Health check: agent may still be starting"
+  fi
+
+  echo -e "  Checking OpenClaw Gateway..."
+  if ssh "$DEPLOY_USER@$VPS_HOST" "pgrep -f 'openclaw gateway'" &>/dev/null; then
+    ok "OpenClaw Gateway: RUNNING"
+  else
+    warn "OpenClaw Gateway may need manual start: openclaw gateway --port 18789"
   fi
 fi
 
@@ -452,11 +479,18 @@ echo -e "${CYAN}║${NC}  Price:       $PRICE USDC per query"
 
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
 echo -e "${CYAN}║${NC}"
-echo -e "${CYAN}║${NC}  ${BOLD}Live URLs:${NC}"
-echo -e "${CYAN}║${NC}    🌐 Frontend:   https://$DOMAIN"
-echo -e "${CYAN}║${NC}    🔌 API:        https://$DOMAIN/api/health"
-echo -e "${CYAN}║${NC}    📊 Capabilities: https://$DOMAIN/api/capabilities"
-echo -e "${CYAN}║${NC}    🔍 Explorer:   $EXPLORER/accounts/$WALLET_ADDRESS"
+echo -e "${CYAN}║${NC}  ${BOLD}Running on VPS:${NC}"
+echo -e "${CYAN}║${NC}    🖥️  Server:      $VPS_HOST"
+echo -e "${CYAN}║${NC}    🌐 Frontend:    https://$DOMAIN"
+echo -e "${CYAN}║${NC}    🔌 API:         https://$DOMAIN/api/health"
+echo -e "${CYAN}║${NC}    🦞 OpenClaw:    ws://$VPS_HOST:18789"
+echo -e "${CYAN}║${NC}    🔍 Explorer:    $EXPLORER/accounts/$WALLET_ADDRESS"
+echo -e "${CYAN}║${NC}"
+echo -e "${CYAN}║${NC}  ${BOLD}Architecture (on VPS):${NC}"
+echo -e "${CYAN}║${NC}    OpenClaw Gateway → ws://127.0.0.1:18789"
+echo -e "${CYAN}║${NC}    MultiversX Skills → ~/.openclaw/workspace/.agent/skills/multiversx/"
+echo -e "${CYAN}║${NC}    moltbot-starter-kit → (listen → act → prove loop)"
+echo -e "${CYAN}║${NC}    Backend API → http://0.0.0.0:4000"
 fi
 
 echo -e "${CYAN}║${NC}"
@@ -469,7 +503,7 @@ echo -e "${CYAN}║${NC}  ${BOLD}Commands:${NC}"
 echo -e "${CYAN}║${NC}    npm run dev        # Local development"
 
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
-echo -e "${CYAN}║${NC}    npm run logs       # Tail production logs"
+echo -e "${CYAN}║${NC}    ssh $DEPLOY_USER@$VPS_HOST   # Connect to your VPS"
 echo -e "${CYAN}║${NC}    npm run deploy     # Redeploy to VPS"
 fi
 
