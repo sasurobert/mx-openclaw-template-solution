@@ -96,40 +96,14 @@ OPENCLAW_WORKSPACE="${OPENCLAW_HOME}/workspace"
 mkdir -p "${OPENCLAW_WORKSPACE}/skills"
 ok "Workspace: $OPENCLAW_WORKSPACE"
 
-# ── 0c: Install MultiversX OpenClaw Skills into workspace ───────────────────
+# ── 0c: Install MultiversX OpenClaw Skills (official installer) ─────────────
 echo -e "  ${BOLD}Installing MultiversX OpenClaw Skills...${NC}"
 
-MVX_SKILL_DIR="${OPENCLAW_WORKSPACE}/skills/multiversx"
-MVX_MOLTBOT_DIR="${MVX_SKILL_DIR}/moltbot-starter-kit"
-
-mkdir -p "${MVX_SKILL_DIR}/references"
-
-# Download SKILL.md (agent instructions)
-curl -sL "${OPENCLAW_RAW}/SKILL.md" > "${MVX_SKILL_DIR}/SKILL.md" 2>/dev/null && ok "SKILL.md → ${MVX_SKILL_DIR}/" || warn "Could not fetch SKILL.md"
-
-# Download reference docs
-REFS="setup identity validation reputation escrow x402 manifest"
-REF_COUNT=0
-for ref in ${REFS}; do
-  if curl -sL "${OPENCLAW_RAW}/references/${ref}.md" > "${MVX_SKILL_DIR}/references/${ref}.md" 2>/dev/null; then
-    REF_COUNT=$((REF_COUNT + 1))
-  fi
-done
-ok "$REF_COUNT reference docs installed"
-
-# Clone or pull moltbot-starter-kit (implementation code)
-if [ -d "${MVX_MOLTBOT_DIR}/.git" ]; then
-  echo -e "  Pulling latest moltbot-starter-kit..."
-  (cd "${MVX_MOLTBOT_DIR}" && git pull --quiet 2>/dev/null) && ok "moltbot-starter-kit updated" || warn "Pull failed — using existing version"
-else
-  echo -e "  Cloning moltbot-starter-kit..."
-  git clone --quiet --depth 1 "https://github.com/sasurobert/moltbot-starter-kit.git" "${MVX_MOLTBOT_DIR}" 2>/dev/null && ok "moltbot-starter-kit cloned" || warn "Clone failed — continuing with bundled skills"
-fi
-
-# Install starter-kit deps
-if [ -f "${MVX_MOLTBOT_DIR}/package.json" ]; then
-  (cd "${MVX_MOLTBOT_DIR}" && npm install --silent 2>/dev/null) && ok "Skills dependencies installed" || warn "Could not install skills deps"
-fi
+# Use the official install script from multiversx-openclaw-skills
+# This downloads SKILL.md, reference docs, and clones moltbot-starter-kit
+curl -sL "https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/refs/heads/${OPENCLAW_BRANCH}/scripts/install.sh" | bash \
+  && ok "MultiversX OpenClaw Skills installed (via official installer)" \
+  || warn "Skills install failed — run manually: curl -sL https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/refs/heads/${OPENCLAW_BRANCH}/scripts/install.sh | bash"
 
 # ── 0d: Check for template updates ─────────────────────────────────────────
 echo -e "  ${BOLD}Checking template version...${NC}"
