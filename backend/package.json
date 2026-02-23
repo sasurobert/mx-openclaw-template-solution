@@ -16,6 +16,7 @@
         "@multiversx/sdk-network-providers": "^2.0.0",
         "@multiversx/sdk-wallet": "^4.0.0",
         "axios": "^1.7.0",
+        "better-sqlite3": "^12.6.2",
         "cors": "^2.8.5",
         "dotenv": "^16.4.0",
         "express": "^4.21.0",
@@ -26,6 +27,7 @@
         "uuid": "^10.0.0"
     },
     "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
         "@types/cors": "^2.8.17",
         "@types/express": "^5.0.0",
         "@types/jest": "^29.5.0",
