@@ -12,15 +12,16 @@ set -euo pipefail
 # ║   Usage:  ./launch.sh --local     (skip VPS, run locally only)             ║
 # ║                                                                             ║
 # ║   What it does:                                                             ║
-# ║   ┌─ Step 1: Collect your keys (interactive prompts)                       ║
+# ║   ┌─ Step 0: Pull latest OpenClaw release (always up to date)              ║
+# ║   ├─ Step 1: Collect your keys (interactive prompts)                       ║
 # ║   ├─ Step 2: Generate wallet + config                                      ║
 # ║   ├─ Step 3: Install dependencies                                         ║
 # ║   ├─ Step 4: Fund wallet (devnet only)                                     ║
 # ║   ├─ Step 5: Register agent on-chain                                       ║
 # ║   ├─ Step 6: Build manifest + mint OASF identity                          ║
-# ║   ├─ Step 7: Provision VPS (harden, Docker, firewall)                      ║
-# ║   ├─ Step 8: Deploy to VPS                                                ║
-# ║   ├─ Step 9: Configure GitHub CI/CD (optional)                            ║
+# ║   ├─ Step 7: Build and verify (tsc + tests)                               ║
+# ║   ├─ Step 8: Provision VPS (harden, Docker, firewall)                      ║
+# ║   ├─ Step 9: Deploy to VPS                                                ║
 # ║   └─ Step 10: Verify everything works                                     ║
 # ║                                                                             ║
 # ║   After this script, you only focus on YOUR agent's skills.                ║
@@ -40,6 +41,87 @@ ok()   { echo -e "  ${GREEN}✅ $1${NC}"; }
 info() { echo -e "  ${BLUE}ℹ️  $1${NC}"; }
 warn() { echo -e "  ${YELLOW}⚠️  $1${NC}"; }
 fail() { echo -e "  ${RED}❌ $1${NC}"; exit 1; }
+
+# ── Official OpenClaw repo coordinates ──────────────────────────────────────
+OPENCLAW_SKILLS_REPO="sasurobert/multiversx-openclaw-skills"
+OPENCLAW_TEMPLATE_REPO="sasurobert/mx-openclaw-template-solution"
+OPENCLAW_BRANCH="master"
+OPENCLAW_RAW="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/${OPENCLAW_BRANCH}"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STEP 0: Pull latest OpenClaw release (always up to date)
+# ══════════════════════════════════════════════════════════════════════════════
+step "0/10" "Pull latest OpenClaw release"
+
+cd "$ROOT_DIR"
+
+# ── 0a: Check for template updates ──────────────────────────────────────────
+echo -e "  ${BOLD}Checking for template updates...${NC}"
+
+LATEST_TAG=$(curl -sf "https://api.github.com/repos/${OPENCLAW_TEMPLATE_REPO}/tags" 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+LOCAL_VERSION=$(grep '"version"' package.json 2>/dev/null | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || echo "1.0.0")
+
+if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "v$LOCAL_VERSION" ] && [ "$LATEST_TAG" != "$LOCAL_VERSION" ]; then
+  warn "Template update available: $LOCAL_VERSION → $LATEST_TAG"
+  echo "     View changes: https://github.com/${OPENCLAW_TEMPLATE_REPO}/releases/tag/$LATEST_TAG"
+  echo ""
+else
+  ok "Template is up to date (v$LOCAL_VERSION)"
+fi
+
+# ── 0b: Install/update MultiversX OpenClaw Skills ──────────────────────────
+echo -e "  ${BOLD}Pulling latest MultiversX OpenClaw Skills...${NC}"
+
+SKILL_DIR=".agent/skills/multiversx"
+MOLTBOT_DIR="${SKILL_DIR}/moltbot-starter-kit"
+
+mkdir -p "${SKILL_DIR}/references"
+
+# Download SKILL.md (agent instructions)
+curl -sL "${OPENCLAW_RAW}/SKILL.md" > "${SKILL_DIR}/SKILL.md" 2>/dev/null && ok "SKILL.md updated" || warn "Could not fetch SKILL.md"
+
+# Download reference docs
+REFS="setup identity validation reputation escrow x402 manifest"
+REF_COUNT=0
+for ref in ${REFS}; do
+  if curl -sL "${OPENCLAW_RAW}/references/${ref}.md" > "${SKILL_DIR}/references/${ref}.md" 2>/dev/null; then
+    REF_COUNT=$((REF_COUNT + 1))
+  fi
+done
+ok "$REF_COUNT reference docs updated"
+
+# Clone or pull moltbot-starter-kit (implementation code)
+if [ -d "${MOLTBOT_DIR}/.git" ]; then
+  echo -e "  Pulling latest moltbot-starter-kit..."
+  (cd "${MOLTBOT_DIR}" && git pull --quiet 2>/dev/null) && ok "moltbot-starter-kit updated" || warn "Could not pull — using existing version"
+else
+  echo -e "  Cloning moltbot-starter-kit..."
+  git clone --quiet --depth 1 "https://github.com/sasurobert/moltbot-starter-kit.git" "${MOLTBOT_DIR}" 2>/dev/null && ok "moltbot-starter-kit cloned" || warn "Could not clone — continuing with bundled skills"
+fi
+
+# Install moltbot-starter-kit deps if present
+if [ -f "${MOLTBOT_DIR}/package.json" ]; then
+  (cd "${MOLTBOT_DIR}" && npm install --silent 2>/dev/null) && ok "Skills dependencies installed" || warn "Could not install skills deps"
+fi
+
+# ── 0c: Download latest contract ABIs ───────────────────────────────────────
+echo -e "  ${BOLD}Checking for latest contract ABIs...${NC}"
+
+ABI_DIR="backend/src/mx/abis"
+if [ -d "$ABI_DIR" ]; then
+  # Try to fetch updated ABIs from the skills repo
+  for abi in identity-registry validation-registry reputation-registry escrow; do
+    if curl -sL "${OPENCLAW_RAW}/references/${abi}.abi.json" > "/tmp/${abi}.abi.json" 2>/dev/null && [ -s "/tmp/${abi}.abi.json" ]; then
+      cp "/tmp/${abi}.abi.json" "${ABI_DIR}/${abi}.abi.json"
+    fi
+  done
+  ok "Contract ABIs checked"
+else
+  info "No ABI directory found — using bundled ABIs"
+fi
+
+echo ""
+ok "OpenClaw is up to date — proceeding with launch"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1: Collect keys and configuration

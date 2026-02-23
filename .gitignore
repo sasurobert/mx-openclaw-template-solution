@@ -95,3 +95,4 @@ playwright-report/
 *.tgz
 *.tar.gz
 agent.config.json
+.agent/
