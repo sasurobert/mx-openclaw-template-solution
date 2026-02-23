@@ -63,4 +63,12 @@ export class SessionStore {
         }
         session.fileIds.push(fileId);
     }
+
+    listSessions(): Session[] {
+        return Array.from(this.sessions.values());
+    }
+
+    deleteSession(id: string): boolean {
+        return this.sessions.delete(id);
+    }
 }

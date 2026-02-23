@@ -7,6 +7,7 @@ import path from 'path';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { SessionStore } from './session/session-store';
+import { createAgentNativeRoutes } from './routes/agent-native';
 
 // [M-2 FIX] Body size limit constant
 const JSON_BODY_LIMIT = '1mb';
@@ -114,7 +115,7 @@ export function createApp(): Express {
     const corsOrigin = process.env.CORS_ORIGIN;
     app.use(cors({
         origin: corsOrigin || (process.env.NODE_ENV === 'production' ? false : '*'),
-        methods: ['GET', 'POST'],
+        methods: ['GET', 'POST', 'DELETE'],
         allowedHeaders: ['Content-Type', 'Authorization'],
     }));
 
@@ -125,6 +126,11 @@ export function createApp(): Express {
     if (process.env.NODE_ENV !== 'test') {
         app.use(morgan('combined'));
     }
+
+    // ==========================================
+    // Agent-Native Routes (parity layer)
+    // ==========================================
+    app.use('/api', createAgentNativeRoutes(sessionStore));
 
     // ==========================================
     // GET /api/health
