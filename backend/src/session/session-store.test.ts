@@ -83,4 +83,25 @@ describe('SessionStore', () => {
             expect(() => store.addMessage('bad-id', { role: 'user', content: 'x' })).toThrow();
         });
     });
+
+    describe('addFileId', () => {
+        it('should add a file ID to the session', () => {
+            const session = store.createSession();
+            store.addFileId(session.id, 'file-abc');
+            const updated = store.getSession(session.id);
+            expect(updated!.fileIds).toContain('file-abc');
+        });
+
+        it('should accumulate multiple file IDs', () => {
+            const session = store.createSession();
+            store.addFileId(session.id, 'file-1');
+            store.addFileId(session.id, 'file-2');
+            const updated = store.getSession(session.id);
+            expect(updated!.fileIds).toHaveLength(2);
+        });
+
+        it('should throw for non-existent session', () => {
+            expect(() => store.addFileId('bad-id', 'file-x')).toThrow();
+        });
+    });
 });

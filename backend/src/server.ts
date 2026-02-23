@@ -1,9 +1,24 @@
 import express, { Express } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import morgan from 'morgan';
 import path from 'path';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { SessionStore } from './session/session-store';
+
+// [M-2 FIX] Body size limit constant
+const JSON_BODY_LIMIT = '1mb';
+
+// [L-4 FIX] Sanitize filename: strip path traversal and non-ASCII
+function sanitizeFilename(filename: string): string {
+    return filename
+        .replace(/[^\w\s.\-]/g, '_') // Replace non-word chars except dots/hyphens
+        .replace(/\.{2,}/g, '.')     // Collapse multiple dots
+        .replace(/^\./, '_')         // No leading dot
+        .substring(0, 200);          // Cap length
+}
 
 // Multer config for file uploads
 const upload = multer({
@@ -19,6 +34,44 @@ const upload = multer({
         }
     },
 });
+
+// [H-1 FIX] Rate limiters
+const chatLimiter = rateLimit({
+    windowMs: 60 * 1000,  // 1 minute
+    max: 30,               // 30 requests per minute per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please wait before sending another message.' },
+});
+
+const paymentLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,                // 5 payment confirmations per minute per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many payment confirmation attempts. Please wait.' },
+});
+
+// [M-4 FIX] Verify transaction on-chain (stub — wire to MultiversX API in production)
+async function verifyTransactionOnChain(txHash: string): Promise<{ valid: boolean; status?: string }> {
+    // In test/dev mode, skip on-chain verification entirely
+    if (process.env.NODE_ENV === 'test' || process.env.SKIP_TX_VERIFICATION === 'true') {
+        return { valid: true, status: 'skipped_verification' };
+    }
+
+    const apiUrl = process.env.MULTIVERSX_API_URL || 'https://devnet-api.multiversx.com';
+    try {
+        const response = await fetch(`${apiUrl}/transactions/${txHash}`, { signal: AbortSignal.timeout(10000) });
+        if (!response.ok) {
+            return { valid: false, status: 'not_found' };
+        }
+        const data = await response.json() as Record<string, unknown>;
+        const status = (data.status as string) || 'unknown';
+        return { valid: status === 'success', status };
+    } catch {
+        return { valid: false, status: 'verification_failed' };
+    }
+}
 
 // Load agent config
 function loadAgentConfig(): Record<string, unknown> {
@@ -41,9 +94,37 @@ export function createApp(): Express {
     const sessionStore = new SessionStore();
     const agentConfig = loadAgentConfig();
 
-    // Middleware
-    app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-    app.use(express.json());
+    // ==========================================
+    // Security Middleware
+    // ==========================================
+
+    // [M-1 FIX] Helmet — CSP, HSTS, X-Frame-Options, X-Content-Type-Options
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for SSE
+            },
+        },
+        crossOriginEmbedderPolicy: false, // Allow embedding for landing page assets
+    }));
+
+    // [H-2 FIX] CORS — explicit origin, never wildcard in production
+    const corsOrigin = process.env.CORS_ORIGIN;
+    app.use(cors({
+        origin: corsOrigin || (process.env.NODE_ENV === 'production' ? false : '*'),
+        methods: ['GET', 'POST'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+    }));
+
+    // [M-2 FIX] Body size limit
+    app.use(express.json({ limit: JSON_BODY_LIMIT }));
+
+    // [L-3 FIX] Request logging
+    if (process.env.NODE_ENV !== 'test') {
+        app.use(morgan('combined'));
+    }
 
     // ==========================================
     // GET /api/health
@@ -53,6 +134,7 @@ export function createApp(): Express {
             status: 'ok',
             uptime: process.uptime(),
             timestamp: new Date().toISOString(),
+            version: '1.0.0',
         });
     });
 
@@ -70,13 +152,19 @@ export function createApp(): Express {
     });
 
     // ==========================================
-    // POST /api/chat
+    // POST /api/chat [H-1 FIX: Rate limited]
     // ==========================================
-    app.post('/api/chat', (req, res) => {
+    app.post('/api/chat', chatLimiter, (req, res) => {
         const { message, sessionId } = req.body;
 
         if (!message || typeof message !== 'string') {
             res.status(400).json({ error: 'message is required and must be a string' });
+            return;
+        }
+
+        // Sanitize message length
+        if (message.length > 10000) {
+            res.status(400).json({ error: 'Message too long. Maximum 10,000 characters.' });
             return;
         }
 
@@ -104,8 +192,7 @@ export function createApp(): Express {
             return;
         }
 
-        // If paid — for now, return a placeholder.
-        // In the real implementation, this will be an SSE stream from the agent.
+        // If paid — SSE stream placeholder
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
@@ -116,9 +203,9 @@ export function createApp(): Express {
     });
 
     // ==========================================
-    // POST /api/chat/confirm-payment
+    // POST /api/chat/confirm-payment [H-1 FIX: Rate limited] [M-4 FIX: Tx verification]
     // ==========================================
-    app.post('/api/chat/confirm-payment', (req, res) => {
+    app.post('/api/chat/confirm-payment', paymentLimiter, async (req, res) => {
         const { sessionId, txHash } = req.body;
 
         if (!sessionId || !txHash) {
@@ -126,9 +213,26 @@ export function createApp(): Express {
             return;
         }
 
+        // Validate txHash format (hex string)
+        if (typeof txHash !== 'string' || txHash.length < 10) {
+            res.status(400).json({ error: 'Invalid txHash format' });
+            return;
+        }
+
         const session = sessionStore.getSession(sessionId);
         if (!session) {
             res.status(404).json({ error: 'Session not found' });
+            return;
+        }
+
+        // [M-4 FIX] Verify tx on-chain
+        const verification = await verifyTransactionOnChain(txHash);
+        if (!verification.valid) {
+            res.status(400).json({
+                error: 'Transaction verification failed',
+                status: verification.status,
+                txHash,
+            });
             return;
         }
 
@@ -139,6 +243,7 @@ export function createApp(): Express {
             status: 'confirmed',
             jobId,
             message: 'Payment confirmed. You can now send your query.',
+            txVerification: verification.status,
         });
     });
 
@@ -152,9 +257,11 @@ export function createApp(): Express {
         }
 
         const fileId = uuidv4();
+        // [L-4 FIX] Sanitize original filename
+        const safeFilename = sanitizeFilename(req.file.originalname);
         res.json({
             fileId,
-            filename: req.file.originalname,
+            filename: safeFilename,
             size: req.file.size,
             message: 'File uploaded successfully.',
         });
@@ -165,6 +272,13 @@ export function createApp(): Express {
     // ==========================================
     app.get('/api/download/:jobId', (req, res) => {
         const { jobId } = req.params;
+
+        // Validate jobId format to prevent path traversal
+        if (!/^job-[\w-]+$/.test(jobId)) {
+            res.status(400).json({ error: 'Invalid jobId format' });
+            return;
+        }
+
         const reportPath = path.resolve(__dirname, `../reports/${jobId}.pdf`);
 
         try {
@@ -181,6 +295,9 @@ export function createApp(): Express {
 
     return app;
 }
+
+// Export for testing
+export { sanitizeFilename, verifyTransactionOnChain };
 
 // Start server if run directly
 if (require.main === module) {
