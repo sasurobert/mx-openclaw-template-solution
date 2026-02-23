@@ -1,130 +1,156 @@
 # 🚀 Deployment Guide
 
-This template includes **optional, configurable CI/CD** that works out of the box — or can be easily swapped for any platform.
+## The Fastest Way: One Command
 
-## Architecture
+```bash
+npm run launch
+```
+
+This single script handles **everything** — from generating your wallet to deploying on a secured VPS. You just answer a few prompts (agent name, LLM key, VPS IP) and it does the rest.
+
+See the **10 steps** in the [README](../README.md#-one-command-launch).
+
+> **Local only?** Use `npm run launch:local` to skip VPS and run on your machine.
+
+---
+
+## What `launch.sh` Does Under the Hood
+
+```
+launch.sh
+  ├── scripts/generate_wallet.ts    ← Step 2: Create MultiversX wallet
+  ├── writes .env + agent.config    ← Step 2: From your answers
+  ├── npm ci (backend + frontend)   ← Step 3: Install deps
+  ├── scripts/fund.ts               ← Step 4: Devnet faucet
+  ├── scripts/register.ts           ← Step 5: On-chain registration
+  ├── scripts/build_manifest.ts     ← Step 6: OASF manifest
+  ├── tsc + jest                    ← Step 7: Build + verify
+  ├── infra/provision.sh            ← Step 8: Harden VPS
+  ├── infra/deploy.sh               ← Step 9: Docker deploy
+  └── curl /api/health              ← Step 10: Verify
+```
+
+---
+
+## Manual Step-by-Step (If You Prefer)
+
+```bash
+# 1. Config
+npm run setup               # Interactive wizard
+
+# 2. Fund + Register
+npm run fund                # Devnet faucet
+npm run register            # On-chain identity
+
+# 3. Local dev
+npm run dev                 # Backend :4000 + Frontend :3000
+
+# 4. VPS deploy
+npm run provision -- root@YOUR_VPS_IP
+npm run deploy -- moltbot@YOUR_VPS_IP yourdomain.com
+```
+
+---
+
+## Infrastructure Files
 
 ```
 .github/workflows/
-├── ci.yml                  ← ALWAYS runs: lint, test, audit
-├── deploy-frontend.yml     ← OPTIONAL: Vercel (swap for Netlify, Cloudflare, etc.)
-└── deploy-backend.yml      ← OPTIONAL: VPS via SSH (swap for Cloud Run, Fly.io, etc.)
+├── ci.yml                  ← ALWAYS: lint → test (≥80%) → audit
+├── deploy-frontend.yml     ← OPTIONAL: Vercel (swappable)
+└── deploy-backend.yml      ← OPTIONAL: VPS via SSH (swappable)
+
+infra/
+├── provision.sh            ← Hardens Ubuntu VPS (UFW, Fail2Ban, Docker)
+├── deploy.sh               ← rsync + docker compose up
+├── destroy.sh              ← Teardown
+├── logs.sh                 ← Tail logs
+├── docker-compose.yml      ← VPS-specific compose
+└── Caddyfile               ← Auto-HTTPS reverse proxy
 
 deploy/
-└── Caddyfile               ← OPTIONAL: auto-HTTPS reverse proxy (swap for nginx, traefik)
+└── Caddyfile               ← Alternative Caddyfile (root-level)
 
 backend/
-├── Dockerfile              ← Multi-stage build, works anywhere Docker runs
-└── eslint.config.js        ← ESLint flat config (v9+)
+├── Dockerfile              ← Multi-stage (deps → build → minimal prod)
+└── eslint.config.js        ← ESLint v9 flat config
 
-docker-compose.yml          ← OPTIONAL: full-stack local/VPS orchestration
-.env.example                ← Documentation of all config variables
+docker-compose.yml          ← Root-level full-stack compose
 ```
 
-## Quick Start (4 commands to deploy)
+---
 
-```bash
-# 1. Fork the template
-gh repo fork multiversx/mx-openclaw-template-solution
+## Secrets: Zero-Leak Model
 
-# 2. Set secrets (only the ones you need for YOUR deployment)
-gh secret set LLM_API_KEY --body "sk-..."
-gh secret set WALLET_PEM < wallet.pem
-
-# For VPS deploy (optional):
-gh secret set VPS_SSH_KEY < ~/.ssh/id_ed25519
-gh secret set VPS_HOST --body "203.0.113.42"
-
-# For Vercel deploy (optional):
-gh secret set VERCEL_TOKEN --body "vercel_xxxx"
-gh secret set VERCEL_ORG_ID --body "team_xxxx"
-gh secret set VERCEL_PROJECT_ID --body "prj_xxxx"
-
-# 3. Push → everything deploys automatically
-git push origin main
+```
+Layer 1: .env.example       ← Committed (documentation only, no real values)
+Layer 2: GitHub Secrets      ← Encrypted, injected at deploy time
+Layer 3: VPS .env            ← Generated on first deploy, never leaves server
 ```
 
-## Want to Deploy Somewhere Else?
+| Secret | Where | Required? |
+|:---|:---|:---|
+| `LLM_API_KEY` | GitHub Secret or `.env` | Yes |
+| `WALLET_PEM` | GitHub Secret or `wallet.pem` | Yes |
+| `VPS_SSH_KEY` | GitHub Secret | Only for CI→VPS deploy |
+| `VPS_HOST` | GitHub Secret | Only for CI→VPS deploy |
+| `VERCEL_TOKEN` | GitHub Secret | Only for Vercel deploy |
+
+---
+
+## Want a Different Provider?
 
 ### Frontend Alternatives
 
-Edit `.github/workflows/deploy-frontend.yml` — replace the Deploy step:
+Edit `.github/workflows/deploy-frontend.yml`:
 
-| Platform | Replace with |
+| Platform | Deploy command |
 |:---|:---|
 | **Netlify** | `npx netlify-cli deploy --prod --dir=frontend/dist` |
 | **Cloudflare Pages** | `npx wrangler pages deploy frontend/dist` |
-| **AWS S3 + CloudFront** | `aws s3 sync frontend/dist s3://bucket --delete` |
-| **Firebase Hosting** | `npx firebase-tools deploy --only hosting` |
-| **GitHub Pages** | Use `peaceiris/actions-gh-pages@v3` action |
+| **AWS S3** | `aws s3 sync frontend/dist s3://bucket --delete` |
+| **Firebase** | `npx firebase-tools deploy --only hosting` |
 
 ### Backend Alternatives
 
-Edit `.github/workflows/deploy-backend.yml` — replace the SSH deploy steps:
+Edit `.github/workflows/deploy-backend.yml`:
 
-| Platform | Replace with |
+| Platform | Deploy command |
 |:---|:---|
-| **Google Cloud Run** | `gcloud run deploy agent --source ./backend --region us-central1` |
+| **Google Cloud Run** | `gcloud run deploy agent --source ./backend` |
 | **Fly.io** | `flyctl deploy --config backend/fly.toml` |
 | **Railway** | `npx @railway/cli deploy --service backend` |
 | **Render** | `curl -X POST $RENDER_DEPLOY_HOOK_URL` |
-| **AWS ECS** | `aws ecs update-service --cluster $CLUSTER --service $SVC` |
-| **DigitalOcean App Platform** | `doctl apps create-deployment $APP_ID` |
 
-### Don't Want CI/CD at All?
+### Don't Want CI/CD?
 
-Just delete the `.github/workflows/` directory. The template works perfectly for local development without any CI/CD.
+Delete `.github/workflows/`. The template works fine without it.
 
-## Secrets Model (Zero Leakage)
-
-```
-Layer 1: .env.example      ← Committed to Git, documentation only
-Layer 2: GitHub Secrets     ← Encrypted, injected at deploy time
-Layer 3: VPS .env           ← Generated on first deploy, never leaves the server
-```
-
-**Critical rule:** `.env`, `wallet.pem`, and `*.db` are in `.gitignore`. They can never be committed.
-
-### Environment Variables
-
-| Variable | Where to set | Required? |
-|:---|:---|:---|
-| `AGENT_NAME` | `.env` | Yes |
-| `AGENT_WALLET_ADDRESS` | `.env` | Yes |
-| `MULTIVERSX_API_URL` | `.env` | Yes |
-| `LLM_API_KEY` | GitHub Secret | Yes (for LLM features) |
-| `WALLET_PEM` | GitHub Secret | Yes (for signing) |
-| `VPS_SSH_KEY` | GitHub Secret | Only if VPS deploy |
-| `VPS_HOST` | GitHub Secret | Only if VPS deploy |
-| `VERCEL_TOKEN` | GitHub Secret | Only if Vercel deploy |
-
-## Local Development
-
-```bash
-cd backend
-cp ../.env.example ../.env  # Fill in your values
-npm install
-npm run dev                 # Starts on port 4000
-```
-
-## Docker (Local or VPS)
-
-```bash
-cp .env.example .env        # Fill in your values
-docker compose up -d        # Starts backend + frontend + Caddy
-docker compose ps           # Verify all services healthy
-docker compose logs -f      # Tail logs
-```
+---
 
 ## What Happens on `git push`
 
-| Step | Workflow | Time |
+| Step | Time | What |
 |:---|:---|:---|
-| 1. Lint + Type Check | `ci.yml` | ~10s |
-| 2. Test (≥80% coverage) | `ci.yml` | ~15s |
-| 3. Security Audit | `ci.yml` | ~5s |
-| 4. Deploy Frontend | `deploy-frontend.yml` | ~40s |
-| 5. Deploy Backend | `deploy-backend.yml` | ~50s |
-| 6. Health Check | `deploy-backend.yml` | ~5s |
+| 1 | ~10s | Lint + TypeScript type check |
+| 2 | ~15s | Test with ≥80% coverage gate |
+| 3 | ~5s | Security audit (prod deps only) |
+| 4 | ~40s | Deploy frontend (Vercel) |
+| 5 | ~50s | Deploy backend (VPS via SSH + Docker) |
+| 6 | ~5s | Health check |
 
-**Total: ~2 minutes from push to live.** Deploy is blocked if tests fail.
+**Total: ~2 minutes from push to live.**
+
+---
+
+## VPS Security (What `provision.sh` Does)
+
+| Action | What |
+|:---|:---|
+| System updates | `apt-get update && upgrade` |
+| Non-root user | Creates `moltbot` with sudo |
+| SSH hardening | Key-only auth, root login disabled |
+| Firewall | UFW: ports 22, 80, 443 only |
+| Brute-force | Fail2Ban active |
+| Docker | Docker + Docker Compose plugin |
+| Auto-updates | `unattended-upgrades` enabled |
