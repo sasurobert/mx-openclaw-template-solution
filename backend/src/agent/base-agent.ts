@@ -9,6 +9,8 @@
  * The agent only needs to know how to process a prompt and yield results.
  */
 
+import { LlmService, LlmMessage } from '../llm/llm-service';
+
 export interface Tool {
     name: string;
     description: string;
@@ -30,6 +32,18 @@ export interface AgentContext {
 }
 
 export abstract class BaseAgent {
+    protected llm: LlmService | null = null;
+
+    constructor() {
+        // Only create LlmService if API key is available (not in test mode)
+        try {
+            this.llm = new LlmService();
+        } catch {
+            // LLM_API_KEY not set — agent will use placeholder responses
+            this.llm = null;
+        }
+    }
+
     /**
      * Return the list of tools this agent can use.
      * Override in derivatives to add domain-specific tools.
@@ -44,23 +58,53 @@ export abstract class BaseAgent {
 
     /**
      * Execute a prompt and yield streaming events.
-     * The base implementation provides a placeholder.
-     * Derivatives should override with actual LLM integration.
+     * If LLM_API_KEY is set, calls the real LLM.
+     * If not, returns a helpful placeholder.
      */
     async *execute(prompt: string, context: AgentContext): AsyncGenerator<StreamEvent> {
+        const jobId = `job-${context.sessionId}`;
+
         yield { type: 'thinking', content: 'Processing your request...' };
 
-        // Placeholder — derivatives override this with real LLM calls
-        yield {
-            type: 'text',
-            content: `Received: "${prompt}". This is the base template agent. Override execute() to add real functionality.`,
-        };
+        if (!this.llm) {
+            yield {
+                type: 'text',
+                content: `⚠️ LLM_API_KEY is not configured. Set it in .env to enable real responses.\n\nReceived: "${prompt}"`,
+            };
+            yield { type: 'complete', content: 'Done (no LLM configured)', jobId };
+            return;
+        }
 
-        yield {
-            type: 'complete',
-            content: 'Done',
-            jobId: `job-${context.sessionId}`,
-        };
+        try {
+            // Build message history
+            const messages: LlmMessage[] = [
+                { role: 'system', content: this.getSystemPrompt() },
+            ];
+
+            // Add previous conversation context
+            for (const msg of context.previousMessages) {
+                messages.push({
+                    role: msg.role as 'user' | 'assistant',
+                    content: msg.content,
+                });
+            }
+
+            // Add current prompt
+            messages.push({ role: 'user', content: prompt });
+
+            // Stream from LLM
+            for await (const chunk of this.llm.stream(messages)) {
+                if (chunk.type === 'text') {
+                    yield { type: 'text', content: chunk.content };
+                }
+            }
+
+            yield { type: 'complete', content: 'Done', jobId };
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            yield { type: 'error', content: `LLM error: ${errorMessage}` };
+            yield { type: 'complete', content: 'Done (with errors)', jobId };
+        }
     }
 
     /**
@@ -70,13 +114,14 @@ export abstract class BaseAgent {
         return {
             tools: this.getTools().map(t => ({ name: t.name, description: t.description })),
             systemPromptLength: this.getSystemPrompt().length,
+            llmConfigured: this.llm !== null,
         };
     }
 }
 
 /**
  * Default agent — used when no derivative is configured.
- * Echoes back the user's message as a placeholder.
+ * Works with any LLM via LLM_API_KEY.
  */
 export class DefaultAgent extends BaseAgent {
     getTools(): Tool[] {
@@ -84,6 +129,9 @@ export class DefaultAgent extends BaseAgent {
     }
 
     getSystemPrompt(): string {
-        return 'You are a helpful AI assistant powered by MultiversX. Respond to user queries.';
+        return `You are a helpful AI assistant powered by MultiversX.
+You answer questions clearly and concisely.
+If the user uploads files, analyze their content.
+Always be accurate — if you're unsure, say so.`;
     }
 }

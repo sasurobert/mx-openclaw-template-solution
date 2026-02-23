@@ -8,6 +8,7 @@ import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { SessionStore } from './session/session-store';
 import { createAgentNativeRoutes } from './routes/agent-native';
+import { DefaultAgent } from './agent/base-agent';
 
 // [M-2 FIX] Body size limit constant
 const JSON_BODY_LIMIT = '1mb';
@@ -198,14 +199,36 @@ export function createApp(): Express {
             return;
         }
 
-        // If paid — SSE stream placeholder
+        // If paid — stream real agent response via SSE
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        res.write(`data: ${JSON.stringify({ type: 'thinking', content: 'Processing your request...' })}\n\n`);
-        res.write(`data: ${JSON.stringify({ type: 'text', content: 'Agent response placeholder' })}\n\n`);
-        res.write(`data: ${JSON.stringify({ type: 'complete', content: 'Done', jobId: session.jobId })}\n\n`);
-        res.end();
+
+        const agent = new DefaultAgent();
+        const context = {
+            sessionId: session.id,
+            fileIds: session.fileIds || [],
+            previousMessages: session.messages.slice(0, -1), // exclude current
+        };
+
+        // Stream agent events to client
+        (async () => {
+            try {
+                for await (const event of agent.execute(message, context)) {
+                    res.write(`data: ${JSON.stringify(event)}\n\n`);
+                    // Add assistant message when complete
+                    if (event.type === 'complete') {
+                        // Collect text events we already sent for the session history
+                        break;
+                    }
+                }
+            } catch (err: unknown) {
+                const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+                res.write(`data: ${JSON.stringify({ type: 'error', content: errorMsg })}\n\n`);
+            } finally {
+                res.end();
+            }
+        })();
     });
 
     // ==========================================
