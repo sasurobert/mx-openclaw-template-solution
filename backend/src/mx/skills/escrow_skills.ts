@@ -3,16 +3,14 @@
  *
  * Uses SDK v15 patterns with the Escrow ABI.
  */
-import {Address, TransactionComputer} from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { Address, TransactionComputer, ApiNetworkProvider, UserSigner } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
-import {createPatchedAbi} from '../utils/abi';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
+import { createPatchedAbi } from '../utils/abi';
 import * as escrowAbiJson from '../abis/escrow.abi.json';
 
 const logger = new Logger('EscrowSkills');
@@ -46,12 +44,12 @@ async function loadSignerAndProvider() {
     process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
   const pemContent = await fs.readFile(pemPath, 'utf8');
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
   const provider = new ApiNetworkProvider(CONFIG.API_URL, {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  return {signer, senderAddress, provider};
+  return { signer, senderAddress, provider };
 }
 
 // ─── deposit ───────────────────────────────────────────────────────────────────
@@ -59,7 +57,7 @@ async function loadSignerAndProvider() {
 export async function deposit(params: DepositParams): Promise<string> {
   logger.info(`Depositing ${params.amount} for job ${params.jobId}`);
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(escrowAbiJson);
@@ -83,9 +81,7 @@ export async function deposit(params: DepositParams): Promise<string> {
     nativeTransferAmount: params.token ? 0n : params.amount,
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();
@@ -101,7 +97,7 @@ export async function deposit(params: DepositParams): Promise<string> {
 export async function release(jobId: string): Promise<string> {
   logger.info(`Releasing escrow for job ${jobId}`);
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(escrowAbiJson);
@@ -117,9 +113,7 @@ export async function release(jobId: string): Promise<string> {
     arguments: [Buffer.from(jobId)],
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();
@@ -135,7 +129,7 @@ export async function release(jobId: string): Promise<string> {
 export async function refund(jobId: string): Promise<string> {
   logger.info(`Refunding escrow for job ${jobId}`);
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(escrowAbiJson);
@@ -151,9 +145,7 @@ export async function refund(jobId: string): Promise<string> {
     arguments: [Buffer.from(jobId)],
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();

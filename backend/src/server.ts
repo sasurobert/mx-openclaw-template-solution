@@ -16,7 +16,7 @@ const JSON_BODY_LIMIT = '1mb';
 // [L-4 FIX] Sanitize filename: strip path traversal and non-ASCII
 function sanitizeFilename(filename: string): string {
     return filename
-        .replace(/[^\w\s.\-]/g, '_') // Replace non-word chars except dots/hyphens
+        .replace(/[^\w\s.-]/g, '_') // Replace non-word chars except dots/hyphens
         .replace(/\.{2,}/g, '.')     // Collapse multiple dots
         .replace(/^\./, '_')         // No leading dot
         .substring(0, 200);          // Cap length

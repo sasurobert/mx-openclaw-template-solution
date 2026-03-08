@@ -1,4 +1,4 @@
-import { SessionStore, Session } from './session-store';
+import { SessionStore } from './session-store';
 
 describe('SessionStore', () => {
     let store: SessionStore;

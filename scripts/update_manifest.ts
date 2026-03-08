@@ -1,5 +1,5 @@
-import {UserSigner} from '@multiversx/sdk-wallet';
 import {
+  UserSigner,
   Address,
   TransactionComputer,
   SmartContractTransactionsFactory,
@@ -22,15 +22,13 @@ import {
   TokenIdentifierValue,
   U64Type,
   U64Value,
-} from '@multiversx/sdk-core';
-import {
   ApiNetworkProvider,
   ProxyNetworkProvider,
-} from '@multiversx/sdk-network-providers';
-import {promises as fs} from 'fs';
+} from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import {CONFIG} from '../src/config';
+import { CONFIG } from '../src/config';
 
 dotenv.config();
 
@@ -62,7 +60,7 @@ async function main() {
   }
 
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
 
   // 2. Load Config
   const configPath = path.resolve('agent.config.json');
@@ -71,7 +69,7 @@ async function main() {
     capabilities: string[];
     nonce: number;
     manifestUri: string;
-    metadata: Array<{key: string; value: string}>;
+    metadata: Array<{ key: string; value: string }>;
     services: Array<{
       service_id: number;
       price: string;
@@ -97,9 +95,7 @@ async function main() {
     process.exit(1);
   }
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
 
   // 4. Load ABI and build transaction using SmartContractTransactionsFactory
   const abiPath = path.resolve(__dirname, '..', 'identity-registry.abi.json');
@@ -154,13 +150,13 @@ async function main() {
   let tokenId = '';
   try {
     const queryResponse = await provider.queryContract({
-      address: {bech32: () => registryAddress},
-      func: 'get_agent_token_id',
-      getEncodedArguments: () => [],
+      contract: new Address(registryAddress),
+      function: 'get_agent_token_id',
+      arguments: [],
     });
     // Token ID is returned as a hex-encoded string
     const hexTokenId = Buffer.from(
-      queryResponse.getReturnDataParts()[0],
+      queryResponse.returnDataParts[0],
     ).toString('utf8');
     tokenId = hexTokenId;
     console.log(`Agent Token ID: ${tokenId}`);
@@ -202,7 +198,7 @@ async function main() {
     gasLimit: BigInt(CONFIG.GAS_LIMITS.REGISTER),
     tokenTransfers: [
       new TokenTransfer({
-        token: new Token({identifier: tokenId, nonce: BigInt(config.nonce)}),
+        token: new Token({ identifier: tokenId, nonce: BigInt(config.nonce) }),
         amount: 1n,
       }),
     ],

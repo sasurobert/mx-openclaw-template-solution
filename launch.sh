@@ -317,18 +317,31 @@ if [ ! -f "$OPENCLAW_CONFIG" ]; then
 {
   "agent": {
     "model": "$OC_MODEL"
+  },
+  "gateway": {
+    "auth": {
+      "mode": "token"
+    }
   }
 }
 OCEOF
-  ok "openclaw.json created with model: $OC_MODEL"
+  ok "openclaw.json created with model: $OC_MODEL (auth.mode: token)"
 else
   info "openclaw.json already exists — not overwriting"
+  # Warn if gateway.auth.mode is missing (required since v2026.3.7)
+  if ! grep -q '"mode"' "$OPENCLAW_CONFIG" 2>/dev/null; then
+    warn "openclaw.json may need gateway.auth.mode — required since OpenClaw v2026.3.7"
+  fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 3: Install dependencies
 # ══════════════════════════════════════════════════════════════════════════════
 step "3/10" "Install dependencies"
+
+# Install root-level dependencies (required for scripts/*.ts)
+cd "$ROOT_DIR" && npm ci --silent 2>/dev/null || npm install --silent
+ok "Root dependencies installed (scripts)"
 
 cd "$ROOT_DIR/backend" && npm ci --silent
 ok "Backend dependencies installed"

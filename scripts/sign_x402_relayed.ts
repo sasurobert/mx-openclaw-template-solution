@@ -1,6 +1,5 @@
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {Transaction, Address, TransactionComputer} from '@multiversx/sdk-core';
-import {promises as fs} from 'fs';
+import { UserSigner, Transaction, Address, TransactionComputer } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 
 // Usage: ts-node sign_x402_relayed.ts <pemPath> <receiver> <value> <nonce> <chainID> <relayerAddress> [data]
 // Signs an x402 payment transaction with relayer field set (Relayed V3 compatible).
@@ -30,7 +29,7 @@ async function main() {
     nonce: BigInt(nonceStr),
     value: BigInt(value),
     receiver: new Address(receiver),
-    sender: new Address(sender.bech32()),
+    sender: new Address(sender.toBech32()),
     relayer: new Address(relayerAddress), // Must set BEFORE signing
     gasPrice: 1000000000n,
     gasLimit: BASE_GAS_LIMIT + RELAYED_V3_EXTRA_GAS,
@@ -47,12 +46,12 @@ async function main() {
 
   // 4. Output Payload (compatible with x402 settle and /relay)
   const payload = {
-    sender: sender.bech32(),
+    sender: sender.toBech32(),
     receiver: receiver,
     value: value,
     nonce: parseInt(nonceStr),
     data: dataStr,
-    signature: signature.toString('hex'),
+    signature: Buffer.from(signature).toString('hex'),
     chainID: chainID,
     version: 2,
     options: 0,

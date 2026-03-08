@@ -8,15 +8,15 @@ import {
   TransactionComputer,
   TokenTransfer,
   Token,
+  ApiNetworkProvider,
+  UserSigner,
 } from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
 
 const logger = new Logger('TransferSkills');
 
@@ -47,12 +47,12 @@ async function loadSignerAndProvider() {
     process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
   const pemContent = await fs.readFile(pemPath, 'utf8');
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
   const provider = new ApiNetworkProvider(CONFIG.API_URL, {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  return {signer, senderAddress, provider};
+  return { signer, senderAddress, provider };
 }
 
 // ─── transfer (single token) ───────────────────────────────────────────────────
@@ -62,7 +62,7 @@ export async function transfer(params: TransferParams): Promise<string> {
     `Transferring ${params.amount} ${params.token || 'EGLD'} → ${params.receiver}`,
   );
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
   const entrypoint = createEntrypoint();
   const factory = entrypoint.createTransfersTransactionsFactory();
   const receiver = Address.newFromBech32(params.receiver);
@@ -91,9 +91,7 @@ export async function transfer(params: TransferParams): Promise<string> {
     });
   }
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();
@@ -113,7 +111,7 @@ export async function multiTransfer(
     `Multi-transfer: ${params.transfers.length} tokens → ${params.receiver}`,
   );
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
   const entrypoint = createEntrypoint();
   const factory = entrypoint.createTransfersTransactionsFactory();
   const receiver = Address.newFromBech32(params.receiver);
@@ -137,9 +135,7 @@ export async function multiTransfer(
     },
   );
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();

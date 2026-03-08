@@ -9,9 +9,9 @@ import {
   TransactionComputer,
   VariadicValue,
   BytesValue,
+  ApiNetworkProvider,
+  UserSigner,
 } from '@multiversx/sdk-core';
-import { ApiNetworkProvider } from '@multiversx/sdk-network-providers';
-import { UserSigner } from '@multiversx/sdk-wallet';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -53,7 +53,7 @@ async function loadSignerAndProvider() {
     process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
   const pemContent = await fs.readFile(pemPath, 'utf8');
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
   const provider = new ApiNetworkProvider(CONFIG.API_URL, {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
@@ -90,9 +90,7 @@ export async function registerAgent(
   });
 
   // Nonce
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   // Relayer V3
@@ -169,9 +167,7 @@ export async function setMetadata(params: SetMetadataParams): Promise<string> {
     ],
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();

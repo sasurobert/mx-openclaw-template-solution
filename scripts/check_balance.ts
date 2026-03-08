@@ -1,6 +1,5 @@
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { ApiNetworkProvider, UserSigner } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 
@@ -22,7 +21,7 @@ async function main() {
 
     const account = await provider.getAccount(address);
 
-    console.log(`\n🔍 Checking Balance for: ${address.bech32()}`);
+    console.log(`\n🔍 Checking Balance for: ${address.toBech32()}`);
     console.log(`🌍 Network: ${providerUrl}`);
     console.log(
       `💰 Balance: ${(BigInt(account.balance.toString()) / 1000000000000000000n).toString()} EGLD`,

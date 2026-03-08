@@ -3,16 +3,14 @@
  *
  * Uses SDK v15 patterns matching hiring.ts::submitReputation.
  */
-import {Address, TransactionComputer} from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { Address, TransactionComputer, ApiNetworkProvider, UserSigner } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
-import {createPatchedAbi} from '../utils/abi';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
+import { createPatchedAbi } from '../utils/abi';
 import * as reputationAbiJson from '../abis/reputation-registry.abi.json';
 
 const logger = new Logger('ReputationSkills');
@@ -37,12 +35,12 @@ async function loadSignerAndProvider() {
     process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
   const pemContent = await fs.readFile(pemPath, 'utf8');
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
   const provider = new ApiNetworkProvider(CONFIG.API_URL, {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  return {signer, senderAddress, provider};
+  return { signer, senderAddress, provider };
 }
 
 // ─── submit_feedback ───────────────────────────────────────────────────────────
@@ -55,16 +53,14 @@ export async function submitFeedback(
     `Submitting feedback for job ${params.jobId}: rating=${params.rating}`,
   );
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(reputationAbiJson);
   const factory = entrypoint.createSmartContractTransactionsFactory(abi);
   const registry = Address.newFromBech32(CONFIG.ADDRESSES.REPUTATION_REGISTRY);
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
 
   const tx = await factory.createTransactionForExecute(senderAddress, {
     contract: registry,
@@ -117,6 +113,6 @@ export async function getReputation(
     logger.warn(
       `Failed to get reputation for agent ${agentNonce}: ${(error as Error).message}`,
     );
-    return {score: 0n, totalFeedbacks: 0n};
+    return { score: 0n, totalFeedbacks: 0n };
   }
 }

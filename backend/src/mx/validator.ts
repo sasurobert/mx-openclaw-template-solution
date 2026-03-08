@@ -1,20 +1,20 @@
-import {UserSigner} from '@multiversx/sdk-wallet';
 import {
+  UserSigner,
   Address,
   TransactionComputer,
   VariadicValue,
+  ApiNetworkProvider,
 } from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
 import axios from 'axios';
-import {promises as fs} from 'fs';
+import { promises as fs } from 'fs';
 import * as path from 'path';
-import {CONFIG} from './config';
+import { CONFIG } from './config';
 import * as identityAbiJson from './abis/identity-registry.abi.json';
 import * as validationAbiJson from './abis/validation-registry.abi.json';
-import {Logger} from './utils/logger';
-import {PoWSolver} from './pow';
-import {createEntrypoint} from './utils/entrypoint';
-import {createPatchedAbi} from './utils/abi';
+import { Logger } from './utils/logger';
+import { PoWSolver } from './pow';
+import { createEntrypoint } from './utils/entrypoint';
+import { createPatchedAbi } from './utils/abi';
 
 export class Validator {
   private logger = new Logger('Validator');
@@ -39,11 +39,11 @@ export class Validator {
       process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
     const pemContent = await fs.readFile(pemPath, 'utf8');
     const signer = UserSigner.fromPem(pemContent);
-    const senderAddress = new Address(signer.getAddress().bech32());
+    const senderAddress = new Address(signer.getAddress().toBech32());
 
     // 2. Fetch Account State (Nonce) with Timeout
     const account = await this.withTimeout(
-      provider.getAccount({bech32: () => senderAddress.toBech32()}),
+      provider.getAccount(senderAddress),
       'Fetching Account',
     );
 
@@ -90,8 +90,8 @@ export class Validator {
           this.logger.info(`Sending to Relayer Service: ${this.relayerUrl}`);
           const relayRes = await axios.post(
             `${this.relayerUrl}/relay`,
-            {transaction: tx.toPlainObject()},
-            {timeout: CONFIG.REQUEST_TIMEOUT},
+            { transaction: tx.toPlainObject() },
+            { timeout: CONFIG.REQUEST_TIMEOUT },
           );
           txHash = relayRes.data.txHash;
         } else {
@@ -106,7 +106,7 @@ export class Validator {
         return txHash;
       } catch (e: unknown) {
         const err = e as {
-          response?: {data?: {error?: string}; status?: number};
+          response?: { data?: { error?: string }; status?: number };
           message?: string;
         };
         const msg = err.response?.data?.error || err.message;
@@ -152,7 +152,7 @@ export class Validator {
       process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
     const pemContent = await fs.readFile(pemPath, 'utf8');
     const signer = UserSigner.fromPem(pemContent);
-    const senderAddress = new Address(signer.getAddress().bech32());
+    const senderAddress = new Address(signer.getAddress().toBech32());
 
     // 1. Get Challenge
     const challengeRes = await axios.post(`${this.relayerUrl}/challenge`, {
@@ -168,9 +168,7 @@ export class Validator {
     const provider = new ApiNetworkProvider(CONFIG.API_URL, {
       clientName: 'moltbot',
     });
-    const account = await provider.getAccount({
-      bech32: () => senderAddress.toBech32(),
-    });
+    const account = await provider.getAccount(senderAddress);
 
     // 3. Create Registration Tx using ABI Factory
     const entrypoint = createEntrypoint();
@@ -241,7 +239,7 @@ export class Validator {
       );
       return tx.status.toString().toLowerCase();
     } catch (e: unknown) {
-      const err = e as {response?: {status?: number}; message?: string};
+      const err = e as { response?: { status?: number }; message?: string };
       // Handle 404 as 'not_found'
       if (err.response?.status === 404 || err.message?.includes('404')) {
         return 'not_found';

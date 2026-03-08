@@ -1,6 +1,5 @@
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {Transaction, Address, TransactionComputer} from '@multiversx/sdk-core';
-import {promises as fs} from 'fs';
+import { UserSigner, Transaction, Address, TransactionComputer } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 
 // Usage: ts-node sign_x402.ts <pemPath> <receiver> <value> <nonce> <chainID> [data]
 
@@ -26,7 +25,7 @@ async function main() {
     nonce: BigInt(nonceStr),
     value: BigInt(value),
     receiver: new Address(receiver),
-    sender: new Address(sender.bech32()),
+    sender: new Address(sender.toBech32()),
     gasPrice: 1000000000n, // Facilitator uses default/inherited? Settler says: BigInt(payload.gasPrice)
     gasLimit: 500000n, // Standard transfer
     data: dataStr ? Buffer.from(dataStr) : undefined,
@@ -43,12 +42,12 @@ async function main() {
   // 4. Output Payload
   // X402Payload interface
   const payload = {
-    sender: sender.bech32(),
+    sender: sender.toBech32(),
     receiver: receiver,
     value: value,
     nonce: parseInt(nonceStr),
     data: dataStr,
-    signature: signature.toString('hex'),
+    signature: Buffer.from(signature).toString('hex'),
     chainID: chainID,
     version: 2,
     options: 0,

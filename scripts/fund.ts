@@ -1,6 +1,4 @@
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {Transaction, Address, TransactionComputer} from '@multiversx/sdk-core';
-import {ProxyNetworkProvider} from '@multiversx/sdk-network-providers';
+import { UserSigner, Transaction, Address, TransactionComputer, ProxyNetworkProvider } from '@multiversx/sdk-core';
 import fs from 'fs';
 
 // Usage: ts-node fund.ts <pemPath> <receiver> <value> <chainId> <proxyUrl>
@@ -17,21 +15,21 @@ async function main() {
   const [pemPath, receiver, value, chainId, proxyUrl] = args;
 
   try {
-    const pem = fs.readFileSync(pemPath, {encoding: 'utf-8'});
+    const pem = fs.readFileSync(pemPath, { encoding: 'utf-8' });
     const signer = UserSigner.fromPem(pem);
     const sender = signer.getAddress();
 
     const provider = new ProxyNetworkProvider(proxyUrl);
     const account = await provider.getAccount(sender);
 
-    console.log(`Sender: ${sender.bech32()}`);
+    console.log(`Sender: ${sender.toBech32()}`);
     console.log(`Nonce: ${account.nonce}`);
     console.log(`Balance: ${account.balance.toString()}`);
 
     const tx = new Transaction({
       nonce: BigInt(account.nonce),
       value: BigInt(value),
-      sender: new Address(sender.bech32()),
+      sender: new Address(sender.toBech32()),
       receiver: new Address(receiver),
       gasLimit: 50000n,
       chainID: chainId,

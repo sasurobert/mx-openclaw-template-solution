@@ -4,16 +4,14 @@
  * Uses SDK v15 patterns matching validator.ts:
  * createEntrypoint() → factory/controller → ABI-typed arguments.
  */
-import {Address, TransactionComputer} from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
-import {UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { Address, TransactionComputer, ApiNetworkProvider, UserSigner } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
-import {createPatchedAbi} from '../utils/abi';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
+import { createPatchedAbi } from '../utils/abi';
 import * as validationAbiJson from '../abis/validation-registry.abi.json';
 
 const logger = new Logger('ValidationSkills');
@@ -49,12 +47,12 @@ async function loadSignerAndProvider() {
     process.env.MULTIVERSX_PRIVATE_KEY || path.resolve('wallet.pem');
   const pemContent = await fs.readFile(pemPath, 'utf8');
   const signer = UserSigner.fromPem(pemContent);
-  const senderAddress = new Address(signer.getAddress().bech32());
+  const senderAddress = new Address(signer.getAddress().toBech32());
   const provider = new ApiNetworkProvider(CONFIG.API_URL, {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  return {signer, senderAddress, provider};
+  return { signer, senderAddress, provider };
 }
 
 // ─── init_job ──────────────────────────────────────────────────────────────────
@@ -64,7 +62,7 @@ export async function initJob(params: InitJobParams): Promise<string> {
     `Initializing job: ${params.jobId} for agent #${params.agentNonce}`,
   );
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(validationAbiJson);
@@ -89,9 +87,7 @@ export async function initJob(params: InitJobParams): Promise<string> {
     nativeTransferAmount: params.paymentAmount ?? 0n,
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   const computer = new TransactionComputer();
@@ -108,7 +104,7 @@ export async function initJob(params: InitJobParams): Promise<string> {
 export async function submitProof(params: SubmitProofParams): Promise<string> {
   logger.info(`Submitting proof for ${params.jobId}: hash=${params.proofHash}`);
 
-  const {signer, senderAddress, provider} = await loadSignerAndProvider();
+  const { signer, senderAddress, provider } = await loadSignerAndProvider();
 
   const entrypoint = createEntrypoint();
   const abi = createPatchedAbi(validationAbiJson);
@@ -126,9 +122,7 @@ export async function submitProof(params: SubmitProofParams): Promise<string> {
     ],
   });
 
-  const account = await provider.getAccount({
-    bech32: () => senderAddress.toBech32(),
-  });
+  const account = await provider.getAccount(senderAddress);
   tx.nonce = BigInt(account.nonce);
 
   // Relayer V3

@@ -115,7 +115,7 @@ mx-openclaw-template-solution/
 │   │   ├── llm/                ← LlmService (OpenAI / Anthropic / Google)
 │   │   ├── routes/             ← Agent-Native API (capabilities, sessions)
 │   │   ├── session/            ← In-memory + SQLite persistent store
-│   │   ├── mx/                 ← MultiversX SDK (facilitator, validator, skills)
+│   │   ├── mx/                 ← MultiversX sdk-core v15 (validator, skills)
 │   │   ├── cron/               ← Proactive task scheduler
 │   │   └── mcp/                ← MCP server connection
 │   └── Dockerfile
@@ -210,10 +210,27 @@ Push → Lint → Test (≥80% coverage) → Deploy (frontend + backend)
 ## 🧪 Testing
 
 ```bash
-cd backend && npm test              # 98 tests, 8 suites
-cd backend && npm run lint          # 0 errors
-cd backend && npm run test:coverage # 81.4% line coverage
+npm run test:scripts       # 25 tests — script compilation, imports, structure
+npm run test:e2e           # 35 tests — launch infra, API flow
+npm run test:backend       # 98 tests — routes, sessions, agents, MCP
+cd backend && npm run lint # 0 errors, 9 warnings (intentional no-console)
 ```
+
+**158 total tests** across 11 suites.
+
+---
+
+## 📦 SDK Dependencies
+
+All MultiversX SDK functionality uses the unified **`@multiversx/sdk-core` v15**:
+
+- `UserSigner`, `Mnemonic` — wallet/key management
+- `ApiNetworkProvider`, `ProxyNetworkProvider` — network clients
+- `SmartContractTransactionsFactory` — transaction building
+- `TransactionComputer` — signing utilities
+- `Address`, `TokenTransfer`, `Token` — core types
+
+> **Note:** The deprecated `@multiversx/sdk-wallet` and `@multiversx/sdk-network-providers` packages have been fully removed. All functionality is consolidated in `sdk-core`.
 
 ---
 

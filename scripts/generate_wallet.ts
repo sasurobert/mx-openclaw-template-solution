@@ -1,5 +1,5 @@
-import {Mnemonic, UserSigner} from '@multiversx/sdk-wallet';
-import {promises as fs} from 'fs';
+import { Mnemonic, UserSigner } from '@multiversx/sdk-core';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 
 async function main() {
@@ -20,12 +20,12 @@ async function main() {
   const mnemonic = Mnemonic.generate();
   const secretKey = mnemonic.deriveKey(0);
   const signer = new UserSigner(secretKey);
-  const address = signer.getAddress().bech32();
+  const address = signer.getAddress().toBech32();
 
   // Create PEM content
   // SDK expects Base64 encoding of the HEX STRING of the seed + pubkey
   const secretKeyHex = secretKey.hex();
-  const pubKeyHex = signer.getAddress().hex();
+  const pubKeyHex = signer.getAddress().toHex();
   const combinedHex = secretKeyHex + pubKeyHex;
   const base64Content = Buffer.from(combinedHex).toString('base64');
 
@@ -38,7 +38,7 @@ ${base64Content.match(/.{1,64}/g)?.join('\n')}
 
   console.log('\n✅ Wallet generated successfully!');
   console.log(`📍 Location: ${walletPath}`);
-  console.log(`ADDERSS: ${address}`);
+  console.log(`ADDRESS: ${address}`);
   console.log(
     '\n⚠️  IMPORTANT: SAVE THESE WORDS SECURELY (This is your only backup):',
   );

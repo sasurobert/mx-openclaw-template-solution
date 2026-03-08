@@ -3,14 +3,13 @@
  *
  * Uses SDK v15 controller.query for identity lookups + API for balances.
  */
-import {Address} from '@multiversx/sdk-core';
-import {ApiNetworkProvider} from '@multiversx/sdk-network-providers';
+import { Address, ApiNetworkProvider, UserSigner } from '@multiversx/sdk-core';
 import axios from 'axios';
 
-import {CONFIG} from '../config';
-import {Logger} from '../utils/logger';
-import {createEntrypoint} from '../utils/entrypoint';
-import {createPatchedAbi} from '../utils/abi';
+import { CONFIG } from '../config';
+import { Logger } from '../utils/logger';
+import { createEntrypoint } from '../utils/entrypoint';
+import { createPatchedAbi } from '../utils/abi';
 import * as identityAbiJson from '../abis/identity-registry.abi.json';
 
 const logger = new Logger('DiscoverySkills');
@@ -92,12 +91,11 @@ export async function getBalance(address?: string): Promise<BalanceResult> {
   // Default to own wallet address
   let targetAddress = address;
   if (!targetAddress) {
-    const {UserSigner} = await import('@multiversx/sdk-wallet');
-    const {promises: fs} = await import('fs');
+    const { promises: fs } = await import('fs');
     const pemPath = process.env.MULTIVERSX_PRIVATE_KEY || './wallet.pem';
     const pemContent = await fs.readFile(pemPath, 'utf8');
     const signer = UserSigner.fromPem(pemContent);
-    targetAddress = new Address(signer.getAddress().bech32()).toBech32();
+    targetAddress = new Address(signer.getAddress().toBech32()).toBech32();
   }
 
   const apiUrl = CONFIG.API_URL;
@@ -107,9 +105,7 @@ export async function getBalance(address?: string): Promise<BalanceResult> {
     clientName: 'moltbot-skills',
     timeout: CONFIG.REQUEST_TIMEOUT,
   });
-  const account = await provider.getAccount({
-    bech32: () => targetAddress!,
-  });
+  const account = await provider.getAccount(Address.newFromBech32(targetAddress!));
 
   // ESDTs
   let tokens: TokenBalance[] = [];
