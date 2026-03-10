@@ -22,7 +22,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npx tsc --outDir dist
+RUN npx -p typescript tsc --outDir dist
 
 # ── Stage 3: Production image (minimal) ───────────────────────────────────────
 FROM node:20-alpine AS runner

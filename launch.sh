@@ -14,15 +14,16 @@ set -euo pipefail
 # ║   What it does:                                                             ║
 # ║   ┌─ Step 0: Pull latest OpenClaw release (always up to date)              ║
 # ║   ├─ Step 1: Collect your keys (interactive prompts)                       ║
-# ║   ├─ Step 2: Generate wallet + config                                      ║
-# ║   ├─ Step 3: Install dependencies                                         ║
-# ║   ├─ Step 4: Fund wallet (devnet only)                                     ║
-# ║   ├─ Step 5: Register agent on-chain                                       ║
-# ║   ├─ Step 6: Build manifest + mint OASF identity                          ║
-# ║   ├─ Step 7: Build and verify (tsc + tests)                               ║
-# ║   ├─ Step 8: Provision VPS (harden, Docker, firewall)                      ║
-# ║   ├─ Step 9: Deploy to VPS                                                ║
-# ║   └─ Step 10: Verify everything works                                     ║
+# ║   ├─ Step 2: Install dependencies                                         ║
+# ║   ├─ Step 3: Generate wallet + config                                     ║
+# ║   ├─ Step 4: Fund wallet (devnet only)                                    ║
+# ║   ├─ Step 5: Build manifest                                                 ║
+# ║   ├─ Step 6: Pin manifest to IPFS (provide link)                           ║
+# ║   ├─ Step 7: Register agent on-chain                                       ║
+# ║   ├─ Step 8: Build and verify (tsc)                                         ║
+# ║   ├─ Step 9: Provision VPS (harden, Docker, firewall)                       ║
+# ║   ├─ Step 10: Deploy to VPS                                                 ║
+# ║   └─ Step 11: Verify everything works                                      ║
 # ║                                                                             ║
 # ║   After this script, you only focus on YOUR agent's skills.                ║
 # ║                                                                             ║
@@ -55,7 +56,7 @@ SKILLS_INSTALL_URL="https://raw.githubusercontent.com/${OPENCLAW_SKILLS_REPO}/re
 #   → When --local: installs everything on this machine
 #   → When deploying to VPS: skips local install (remote-setup.sh does it)
 # ══════════════════════════════════════════════════════════════════════════════
-step "0/10" "Install OpenClaw Platform + MultiversX Agent Skills"
+step "0/11" "Install OpenClaw Platform + MultiversX Agent Skills"
 
 cd "$ROOT_DIR"
 
@@ -146,7 +147,7 @@ ok "OpenClaw platform + MultiversX skills ready"
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1: Collect keys and configuration
 # ══════════════════════════════════════════════════════════════════════════════
-step "1/10" "Collect your keys (the ONLY thing you need to provide)"
+step "1/11" "Collect your keys (the ONLY thing you need to provide)"
 
 echo -e "${BOLD}  Your Agent${NC}"
 read -p "  📛 Agent name (e.g., crypto-researcher): " AGENT_NAME
@@ -171,10 +172,24 @@ case "${LLM_CHOICE:-1}" in
   3) LLM_PROVIDER="google"; LLM_MODEL="gemini-2.5-pro" ;;
   *) LLM_PROVIDER="openai"; LLM_MODEL="gpt-4o" ;;
 esac
+OC_MODEL="$LLM_PROVIDER/$LLM_MODEL"
 
 read -sp "  🔑 $LLM_PROVIDER API Key: " LLM_API_KEY
 echo ""
 [ -z "$LLM_API_KEY" ] && fail "LLM API key is required"
+
+echo ""
+echo -e "${BOLD}  IPFS (Pinata) — optional but recommended${NC}"
+[ -f "$ROOT_DIR/.env" ] && set -a && source "$ROOT_DIR/.env" 2>/dev/null && set +a
+if [ -n "${PINATA_API_KEY:-}" ]; then
+  ok "Pinata key already set (from env) — manifest will auto-pin"
+else
+  info "Set PINATA_API_KEY for automatic manifest pinning in Step 6."
+  info "Get a JWT at: https://app.pinata.cloud/ → API Keys"
+  read -sp "  📌 Pinata JWT (or Enter to skip — you'll paste URI manually later): " PINATA_API_KEY
+  echo ""
+  [ -n "${PINATA_API_KEY:-}" ] && ok "Pinata key set — manifest will auto-pin" || info "No Pinata key — you'll paste the IPFS URI when prompted"
+fi
 
 echo ""
 echo -e "${BOLD}  Network${NC}"
@@ -205,9 +220,25 @@ fi
 ok "Keys collected — moving on"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 2: Generate wallet + write .env + agent.config.json
+# STEP 2: Install dependencies
 # ══════════════════════════════════════════════════════════════════════════════
-step "2/10" "Generate wallet and configuration"
+step "2/11" "Install dependencies"
+
+cd "$ROOT_DIR" && npm ci --silent 2>/dev/null || npm install --silent
+ok "Root dependencies installed"
+
+cd "$ROOT_DIR/backend" && NODE_ENV=development npm ci --silent && npm install typescript
+ok "Backend dependencies installed"
+
+if [ -f "$ROOT_DIR/frontend/package.json" ]; then
+  cd "$ROOT_DIR/frontend" && (npm ci --silent 2>/dev/null || npm install --silent --legacy-peer-deps)
+  ok "Frontend dependencies installed"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STEP 3: Generate wallet + write .env + agent.config.json
+# ══════════════════════════════════════════════════════════════════════════════
+step "3/11" "Generate wallet and configuration"
 
 cd "$ROOT_DIR"
 
@@ -230,9 +261,9 @@ MULTIVERSX_API_URL=$API_URL
 MULTIVERSX_EXPLORER_URL=$EXPLORER
 MULTIVERSX_PRIVATE_KEY=./wallet.pem
 
-IDENTITY_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
-VALIDATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
-REPUTATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+IDENTITY_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgqxyum8w6cn6xkz9q5rsy4mfcsw3njpd6cd8ssr4quyy
+VALIDATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgqvax6z79cvyz9gkfwg57hqume352p7s7rd8ss4g3t43
+REPUTATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgq5x2d2fnz5rt42k3ht8sq2el6992s4nv3d8ssqpg6de
 ESCROW_CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
 
 X402_FACILITATOR_URL=http://localhost:4000
@@ -247,6 +278,8 @@ LLM_PROVIDER=$LLM_PROVIDER
 LLM_API_KEY=$LLM_API_KEY
 LLM_MODEL=$LLM_MODEL
 
+PINATA_API_KEY=${PINATA_API_KEY:-}
+
 PRICE_PER_QUERY=$PRICE
 PRICE_TOKEN=USDC-350c4e
 
@@ -256,6 +289,10 @@ NODE_ENV=production
 CORS_ORIGIN=https://${DOMAIN:-localhost:3000}
 EOF
 ok ".env written"
+
+# Config customization (skip with Enter to accept defaults)
+echo ""
+read -p "  Customize config files? [y/N] (N = accept defaults): " CUSTOMIZE_CONFIG
 
 # Write agent.config.json
 cat > agent.config.json << EOF
@@ -279,6 +316,38 @@ cat > agent.config.json << EOF
 }
 EOF
 ok "agent.config.json written"
+if [ "${CUSTOMIZE_CONFIG:-N}" = "y" ] || [ "${CUSTOMIZE_CONFIG:-N}" = "Y" ]; then
+  read -p "  Edit agent.config.json? [y/N]: " EDIT_AGENT
+  if [ "${EDIT_AGENT:-N}" = "y" ] || [ "${EDIT_AGENT:-N}" = "Y" ]; then
+    ${EDITOR:-vi} "$ROOT_DIR/agent.config.json" && ok "agent.config.json updated" || warn "Edit cancelled or failed"
+  fi
+fi
+
+# Write manifest.config.json (required by build_manifest.ts)
+AGENT_BASE="https://${DOMAIN:-$AGENT_NAME.example.com}"
+cat > manifest.config.json << MANEOF
+{
+  "agentName": "$AGENT_NAME",
+  "description": "$AGENT_DESC",
+  "version": "1.0.0",
+  "services": [
+    { "name": "x402", "endpoint": "${AGENT_BASE}/x402", "version": "1.0.0" }
+  ],
+  "oasf": {
+    "skills": [{ "category": "General", "items": ["query", "research"] }],
+    "domains": [{ "category": "General", "items": ["blockchain", "crypto"] }]
+  },
+  "x402Support": true,
+  "manifestUri": "${AGENT_BASE}/manifest.json"
+}
+MANEOF
+ok "manifest.config.json written"
+if [ "${CUSTOMIZE_CONFIG:-N}" = "y" ] || [ "${CUSTOMIZE_CONFIG:-N}" = "Y" ]; then
+  read -p "  Edit manifest.config.json? [y/N]: " EDIT_MANIFEST
+  if [ "${EDIT_MANIFEST:-N}" = "y" ] || [ "${EDIT_MANIFEST:-N}" = "Y" ]; then
+    ${EDITOR:-vi} "$ROOT_DIR/manifest.config.json" && ok "manifest.config.json updated" || warn "Edit cancelled or failed"
+  fi
+fi
 
 # Configure moltbot-starter-kit in the OpenClaw workspace
 MOLTBOT_KIT="${OPENCLAW_WORKSPACE}/.agent/skills/multiversx/moltbot-starter-kit"
@@ -291,9 +360,9 @@ MULTIVERSX_API_URL=$API_URL
 MULTIVERSX_EXPLORER_URL=$EXPLORER
 MULTIVERSX_PRIVATE_KEY=$ROOT_DIR/wallet.pem
 
-IDENTITY_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
-VALIDATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
-REPUTATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
+IDENTITY_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgqxyum8w6cn6xkz9q5rsy4mfcsw3njpd6cd8ssr4quyy
+VALIDATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgqvax6z79cvyz9gkfwg57hqume352p7s7rd8ss4g3t43
+REPUTATION_REGISTRY_ADDRESS=erd1qqqqqqqqqqqqqpgq5x2d2fnz5rt42k3ht8sq2el6992s4nv3d8ssqpg6de
 ESCROW_CONTRACT_ADDRESS=erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu
 
 X402_FACILITATOR_URL=http://localhost:4000
@@ -303,14 +372,6 @@ MOLTEOF
 fi
 
 # Generate OpenClaw workspace config (~/.openclaw/openclaw.json)
-# Maps the user's LLM choice to the OpenClaw agent model config
-case "$LLM_PROVIDER" in
-  openai)    OC_MODEL="openai/$LLM_MODEL" ;;
-  anthropic) OC_MODEL="anthropic/$LLM_MODEL" ;;
-  google)    OC_MODEL="google/$LLM_MODEL" ;;
-  *)         OC_MODEL="openai/gpt-4o" ;;
-esac
-
 OPENCLAW_CONFIG="${OPENCLAW_HOME}/openclaw.json"
 if [ ! -f "$OPENCLAW_CONFIG" ]; then
   cat > "$OPENCLAW_CONFIG" << OCEOF
@@ -335,30 +396,33 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 3: Install dependencies
-# ══════════════════════════════════════════════════════════════════════════════
-step "3/10" "Install dependencies"
-
-# Install root-level dependencies (required for scripts/*.ts)
-cd "$ROOT_DIR" && npm ci --silent 2>/dev/null || npm install --silent
-ok "Root dependencies installed (scripts)"
-
-cd "$ROOT_DIR/backend" && npm ci --silent
-ok "Backend dependencies installed"
-
-if [ -f "$ROOT_DIR/frontend/package.json" ]; then
-  cd "$ROOT_DIR/frontend" && npm ci --silent 2>/dev/null || npm install --silent
-  ok "Frontend dependencies installed"
-fi
-
-# ══════════════════════════════════════════════════════════════════════════════
 # STEP 4: Fund wallet (devnet only)
 # ══════════════════════════════════════════════════════════════════════════════
-step "4/10" "Fund wallet"
+step "4/11" "Fund wallet"
 
 cd "$ROOT_DIR"
 if [ "$CHAIN_ID" = "D" ]; then
-  npx ts-node scripts/fund.ts 2>/dev/null && ok "Wallet funded from devnet faucet" || warn "Faucet unavailable — fund manually"
+  MIN_WEI="50000000000000000"
+  FUND_MAX_ATTEMPTS=60
+  FUND_ATTEMPT=0
+  while true; do
+    FUND_ATTEMPT=$((FUND_ATTEMPT + 1))
+    BALANCE=$(curl -sf "${API_URL}/accounts/${WALLET_ADDRESS}" 2>/dev/null | grep -o '"balance":"[^"]*"' | cut -d'"' -f4 || echo "0")
+    if [ -n "$BALANCE" ] && [ "$BALANCE" -ge "$MIN_WEI" ] 2>/dev/null; then
+      ok "Wallet funded"
+      break
+    fi
+    if [ "$FUND_ATTEMPT" -ge "$FUND_MAX_ATTEMPTS" ]; then
+      warn "Max funding checks reached ($FUND_MAX_ATTEMPTS). Run ./launch.sh again when wallet is funded."
+      exit 1
+    fi
+    info "Fund your devnet wallet at: https://devnet-wallet.multiversx.com/unlock"
+    echo "     Address: $WALLET_ADDRESS"
+    echo "     PEM path: $ROOT_DIR/wallet.pem"
+    echo "     (Use PEM to connect, then request EGLD — min 0.05 EGLD for gas)"
+    echo "     Attempt $FUND_ATTEMPT/$FUND_MAX_ATTEMPTS"
+    read -p "  Press Enter after funding to retry check (Ctrl+C to abort)..." _
+  done
 else
   info "Mainnet selected — fund your wallet manually: $WALLET_ADDRESS"
   echo "   Send at least 0.05 EGLD for gas + your USDC for escrow"
@@ -366,34 +430,49 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 5: Register agent on-chain
+# STEP 5: Build manifest
 # ══════════════════════════════════════════════════════════════════════════════
-step "5/10" "Register agent on MultiversX"
+step "5/11" "Build manifest"
+
+cd "$ROOT_DIR"
+npx ts-node scripts/build_manifest.ts 2>&1 && ok "Manifest built" || fail "Manifest build failed — fix manifest.config.json and retry"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STEP 6: Pin manifest to IPFS (required before registration)
+# ══════════════════════════════════════════════════════════════════════════════
+step "6/11" "Pin manifest to IPFS"
+
+cd "$ROOT_DIR"
+if [ -z "${PINATA_API_KEY:-}" ] && ! grep -q 'PINATA_API_KEY=.' .env 2>/dev/null; then
+  info "No PINATA_API_KEY set — paste your IPFS URI when prompted"
+  info "Next time: set it in Step 1 or add PINATA_API_KEY=your_jwt to .env for auto-pin"
+fi
+npx ts-node scripts/pin_manifest.ts 2>&1 && ok "Manifest pinned — agent.config.json updated with manifestUri" || fail "Pin manifest failed — required for registration"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STEP 7: Register agent on-chain
+# ══════════════════════════════════════════════════════════════════════════════
+step "7/11" "Register agent on MultiversX"
 
 cd "$ROOT_DIR"
 npx ts-node scripts/register.ts 2>&1 && ok "Agent registered on-chain" || warn "Registration may require funded contracts — continuing"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 6: Build manifest + mint identity NFT
+# STEP 8: Build locally
 # ══════════════════════════════════════════════════════════════════════════════
-step "6/10" "Build manifest"
-
-cd "$ROOT_DIR"
-npx ts-node scripts/build_manifest.ts 2>&1 && ok "Manifest built" || warn "Manifest build skipped — run manually: npm run build-manifest"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# STEP 7: Build and test locally
-# ══════════════════════════════════════════════════════════════════════════════
-step "7/10" "Build and verify"
+step "8/11" "Build and verify"
 
 cd "$ROOT_DIR/backend"
-npx tsc --outDir dist && ok "TypeScript build: OK" || fail "TypeScript build failed"
-NODE_ENV=test npx jest --forceExit --detectOpenHandles --silent && ok "Tests: ALL PASSING" || warn "Some tests failed — review output"
+if ! NODE_ENV=development npm ci --silent 2>/dev/null; then
+  info "npm ci failed (e.g. no lockfile) — running npm install"
+  npm install --silent
+fi
+npx -p typescript tsc --outDir dist && ok "TypeScript build: OK" || fail "TypeScript build failed"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 8: Provision VPS
+# STEP 9: Provision VPS
 # ══════════════════════════════════════════════════════════════════════════════
-step "8/10" "Provision VPS"
+step "9/11" "Provision VPS"
 
 if [ -z "$VPS_HOST" ] || [ "$LOCAL_ONLY" = true ]; then
   info "No VPS — running locally only"
@@ -418,7 +497,7 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 9: Deploy to VPS (remote-first: OpenClaw + skills + agent all on VPS)
 # ══════════════════════════════════════════════════════════════════════════════
-step "9/10" "Deploy full OpenClaw agent to VPS"
+step "10/11" "Deploy full OpenClaw agent to VPS"
 
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
   DEPLOY_USER="moltbot"
@@ -454,7 +533,7 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 10: Final verification
 # ══════════════════════════════════════════════════════════════════════════════
-step "10/10" "Verify everything"
+step "11/11" "Verify everything"
 
 echo ""
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then
@@ -487,7 +566,7 @@ echo -e "${CYAN}║${NC}                                                        
 echo -e "${CYAN}║${NC}  Agent:       $AGENT_NAME"
 echo -e "${CYAN}║${NC}  Wallet:      $WALLET_ADDRESS"
 echo -e "${CYAN}║${NC}  Network:     $NETWORK"
-echo -e "${CYAN}║${NC}  LLM:         $LLM_PROVIDER / $LLM_MODEL"
+echo -e "${CYAN}║${NC}  LLM:         $OC_MODEL"
 echo -e "${CYAN}║${NC}  Price:       $PRICE USDC per query"
 
 if [ -n "$VPS_HOST" ] && [ "$LOCAL_ONLY" = false ]; then

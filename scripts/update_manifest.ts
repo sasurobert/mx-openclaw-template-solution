@@ -34,6 +34,16 @@ dotenv.config();
 
 const txComputer = new TransactionComputer();
 
+/** Raw service config from agent.config.json (id/pricePerCall or service_id/price) */
+interface ServiceConfigInput {
+  service_id?: number;
+  id?: string;
+  price?: string;
+  pricePerCall?: string;
+  token?: string;
+  nonce?: number;
+}
+
 async function main() {
   console.log('🚀 Starting Manifest Update...');
 
@@ -83,8 +93,8 @@ async function main() {
   // 3. Validate agent nonce
   const registryAddress =
     process.env.IDENTITY_REGISTRY_ADDRESS || CONFIG.ADDRESSES.IDENTITY_REGISTRY;
-  if (!registryAddress) {
-    console.error('❌ IDENTITY_REGISTRY_ADDRESS not set');
+  if (!registryAddress || !registryAddress.startsWith('erd1')) {
+    console.error('❌ IDENTITY_REGISTRY_ADDRESS invalid or not set');
     process.exit(1);
   }
 
@@ -98,7 +108,7 @@ async function main() {
   const account = await provider.getAccount(senderAddress);
 
   // 4. Load ABI and build transaction using SmartContractTransactionsFactory
-  const abiPath = path.resolve(__dirname, '..', 'identity-registry.abi.json');
+  const abiPath = path.resolve(__dirname, '..', 'backend', 'src', 'mx', 'abis', 'identity-registry.abi.json');
   const rawAbiStr = (await fs.readFile(abiPath, 'utf8'))
     .replace(/"TokenId"/g, '"TokenIdentifier"')
     .replace(/"NonZeroBigUint"/g, '"BigUint"');
@@ -173,14 +183,24 @@ async function main() {
     new FieldDefinition('nonce', '', new U64Type()),
   ]);
 
+  // Normalize services: config may use id/pricePerCall (launch.sh) or service_id/price
   const servicesTyped = (config.services || []).map(
-    s =>
-      new Struct(serviceConfigType, [
-        new Field(new U32Value(s.service_id), 'service_id'),
-        new Field(new BigUIntValue(s.price), 'price'),
-        new Field(new TokenIdentifierValue(s.token), 'token'),
-        new Field(new U64Value(s.nonce), 'nonce'),
-      ]),
+    (s: ServiceConfigInput, idx: number) => {
+      const serviceId =
+        typeof s.service_id === 'number' ? s.service_id : idx;
+      const priceStr = s.price ?? s.pricePerCall ?? '0';
+      const priceWei = BigInt(
+        Math.round(parseFloat(priceStr) * 1_000_000).toString(),
+      );
+      const token = s.token ?? 'USDC-350c4e';
+      const nonce = s.nonce ?? 0;
+      return new Struct(serviceConfigType, [
+        new Field(new U32Value(serviceId), 'service_id'),
+        new Field(new BigUIntValue(priceWei.toString()), 'price'),
+        new Field(new TokenIdentifierValue(token), 'token'),
+        new Field(new U64Value(nonce), 'nonce'),
+      ]);
+    },
   );
 
   const scArgs = [

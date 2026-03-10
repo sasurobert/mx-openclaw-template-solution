@@ -14,6 +14,7 @@
         "balance": "npx ts-node scripts/check_balance.ts",
         "fund": "npx ts-node scripts/fund.ts",
         "update-manifest": "npx ts-node scripts/update_manifest.ts",
+        "pin-manifest": "npx ts-node scripts/pin_manifest.ts",
         "dev": "bash scripts/dev.sh",
         "build": "bash scripts/build.sh",
         "provision": "bash infra/provision.sh",

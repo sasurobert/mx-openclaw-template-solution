@@ -43,6 +43,16 @@ interface Challenge {
   salt: string;
 }
 
+/** Raw service config from agent.config.json (id/pricePerCall or service_id/price) */
+interface ServiceConfigInput {
+  service_id?: number;
+  id?: string;
+  price?: string;
+  pricePerCall?: string;
+  token?: string;
+  nonce?: number;
+}
+
 /**
  * Solve a Lib-based PoW Challenge for the Relayer
  */
@@ -144,10 +154,16 @@ async function main() {
 
   // 3. Load ABI and construct transaction using SmartContractTransactionsFactory
   const registryAddress = CONFIG.ADDRESSES.IDENTITY_REGISTRY;
+  if (!registryAddress || !registryAddress.startsWith('erd1')) {
+    console.error(
+      '❌ IDENTITY_REGISTRY_ADDRESS invalid or not set. Add a valid address to .env.',
+    );
+    process.exit(1);
+  }
   const account = await provider.getAccount(senderAddress);
 
   // Load the identity-registry ABI for proper argument encoding
-  const abiPath = path.resolve(__dirname, '..', 'identity-registry.abi.json');
+  const abiPath = path.resolve(__dirname, '..', 'backend', 'src', 'mx', 'abis', 'identity-registry.abi.json');
   const rawAbiStr = (await fs.readFile(abiPath, 'utf8'))
     .replace(/"TokenId"/g, '"TokenIdentifier"')
     .replace(/"NonZeroBigUint"/g, '"BigUint"');
@@ -211,15 +227,24 @@ async function main() {
     new FieldDefinition('nonce', '', new U64Type()),
   ]);
 
-  const servicesTyped = (config.services || []).map(
-    s =>
-      new Struct(serviceConfigType, [
-        new Field(new U32Value(s.service_id), 'service_id'),
-        new Field(new BigUIntValue(s.price), 'price'),
-        new Field(new TokenIdentifierValue(s.token), 'token'),
-        new Field(new U64Value(s.nonce), 'nonce'),
-      ]),
-  );
+  // Normalize services: config may use id/pricePerCall (launch.sh) or service_id/price
+  const servicesTyped = (config.services || []).map((s: ServiceConfigInput, idx) => {
+    const serviceId =
+      typeof s.service_id === 'number' ? s.service_id : idx;
+    const priceStr = s.price ?? s.pricePerCall ?? '0';
+    // Convert human-readable price to smallest units (USDC = 6 decimals)
+    const priceWei = BigInt(
+      Math.round(parseFloat(priceStr) * 1_000_000).toString(),
+    );
+    const token = s.token ?? 'USDC-350c4e';
+    const nonce = s.nonce ?? 0;
+    return new Struct(serviceConfigType, [
+      new Field(new U32Value(serviceId), 'service_id'),
+      new Field(new BigUIntValue(priceWei.toString()), 'price'),
+      new Field(new TokenIdentifierValue(token), 'token'),
+      new Field(new U64Value(nonce), 'nonce'),
+    ]);
+  });
 
   const scArgs = [
     Buffer.from(config.agentName),
