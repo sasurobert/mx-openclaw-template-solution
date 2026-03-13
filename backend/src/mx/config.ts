@@ -13,17 +13,20 @@ export const CONFIG = {
     process.env.MULTIVERSX_EXPLORER_URL ||
     'https://devnet-explorer.multiversx.com',
 
-  // Addresses
+  // Addresses (MX-8004 registry contracts)
   ADDRESSES: {
-    IDENTITY_REGISTRY:
-      process.env.IDENTITY_REGISTRY_ADDRESS ||
-      'erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu',
+    IDENTITY_REGISTRY: (() => {
+      const env = process.env.IDENTITY_REGISTRY_ADDRESS || '';
+      const deployAddr = 'erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu';
+      const defaultAddr = 'erd1qqqqqqqqqqqqqpgqxyum8w6cn6xkz9q5rsy4mfcsw3njpd6cd8ssr4quyy';
+      return (env && env !== deployAddr) ? env : defaultAddr;
+    })(),
     VALIDATION_REGISTRY:
       process.env.VALIDATION_REGISTRY_ADDRESS ||
-      'erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu',
+      'erd1qqqqqqqqqqqqqpgqvax6z79cvyz9gkfwg57hqume352p7s7rd8ss4g3t43',
     REPUTATION_REGISTRY:
       process.env.REPUTATION_REGISTRY_ADDRESS ||
-      'erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu',
+      'erd1qqqqqqqqqqqqqpgq5x2d2fnz5rt42k3ht8sq2el6992s4nv3d8ssqpg6de',
     ESCROW_CONTRACT:
       process.env.ESCROW_CONTRACT_ADDRESS ||
       'erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu',

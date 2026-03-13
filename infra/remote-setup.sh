@@ -116,8 +116,8 @@ else
   ok "Template already present"
 fi
 
-# Install backend dependencies
-cd "$AGENT_HOME/backend" && npm ci --silent 2>/dev/null || npm install --silent
+# Install backend dependencies (include devDependencies for tsc build)
+cd "$AGENT_HOME/backend" && NODE_ENV=development npm ci --silent 2>/dev/null || npm install --silent
 ok "Backend dependencies installed"
 
 # Install frontend dependencies
@@ -163,7 +163,7 @@ fi
 
 # Build TypeScript
 cd "$AGENT_HOME/backend"
-npx tsc --outDir dist 2>/dev/null && ok "TypeScript build: OK" || warn "TypeScript build had warnings"
+npx -p typescript tsc --outDir dist 2>/dev/null && ok "TypeScript build: OK" || warn "TypeScript build had warnings"
 
 # Register agent on-chain (if scripts exist)
 cd "$AGENT_HOME"
