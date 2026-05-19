@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { Logger } from './logger';
 
 interface CacheEntry {
   relayerAddress: string;
@@ -22,7 +23,7 @@ export class RelayerAddressCache {
     try {
       return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
     } catch {
-      console.warn('Failed to load relayer cache, starting fresh.');
+      new Logger('RelayerAddressCache').warn('Failed to load relayer cache, starting fresh.');
       return {};
     }
   }

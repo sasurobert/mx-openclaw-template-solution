@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SessionStore } from './session/session-store';
 import { createAgentNativeRoutes } from './routes/agent-native';
 import { DefaultAgent } from './agent/base-agent';
+import { Logger } from './mx/utils/logger';
 
 // [M-2 FIX] Body size limit constant
 const JSON_BODY_LIMIT = '1mb';
@@ -333,6 +334,6 @@ if (require.main === module) {
     const port = parseInt(process.env.BACKEND_PORT || '4000', 10);
     const app = createApp();
     app.listen(port, () => {
-        console.log(`🚀 mx-openclaw-template-solution backend running on port ${port}`);
+        new Logger('Server').info(`🚀 mx-openclaw-template-solution backend running on port ${port}`);
     });
 }

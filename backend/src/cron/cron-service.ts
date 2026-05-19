@@ -4,6 +4,8 @@
  * Handles: gas monitoring, settlement checks, session cleanup, health reporting.
  */
 
+import { Logger } from "../mx/utils/logger";
+
 export interface CronTask {
     name: string;
     intervalMs: number;
@@ -43,7 +45,7 @@ export class CronService {
                 entry.lastRun = Date.now();
                 entry.runCount++;
             } catch (err) {
-                console.error(`[cron] Task "${name}" failed:`, err);
+                new Logger('CronService').error(`[cron] Task "${name}" failed:`, err);
             }
         }, entry.task.intervalMs);
     }
