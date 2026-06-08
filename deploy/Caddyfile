@@ -11,26 +11,36 @@
 #   - Change ports:       update "backend:4000" to your port
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Reject absolute-form request URIs 
+(reject_absolute_uri) {
+	@absolute_uri path_regexp ^https?://
+	respond @absolute_uri "Bad Request" 400
+}
+
 # ── API Backend ────────────────────────────────────────────────────────────────
 api.agent.example.com {
-    reverse_proxy backend:4000
+	import reject_absolute_uri
 
-    # CORS headers (customize origin for your frontend domain)
-    header Access-Control-Allow-Origin "https://agent.example.com"
-    header Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS"
-    header Access-Control-Allow-Headers "Content-Type, Authorization"
+	reverse_proxy backend:4000
 
-    # Security headers
-    header X-Content-Type-Options "nosniff"
-    header X-Frame-Options "DENY"
-    header Referrer-Policy "strict-origin-when-cross-origin"
+	# CORS headers (customize origin for your frontend domain)
+	header Access-Control-Allow-Origin "https://agent.example.com"
+	header Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS"
+	header Access-Control-Allow-Headers "Content-Type, Authorization"
+
+	# Security headers
+	header X-Content-Type-Options "nosniff"
+	header X-Frame-Options "DENY"
+	header Referrer-Policy "strict-origin-when-cross-origin"
 }
 
 # ── Frontend (if not using Vercel) ─────────────────────────────────────────────
 agent.example.com {
-    reverse_proxy frontend:3000
+	import reject_absolute_uri
 
-    # Security headers
-    header X-Content-Type-Options "nosniff"
-    header X-Frame-Options "SAMEORIGIN"
+	reverse_proxy frontend:3000
+
+	# Security headers
+	header X-Content-Type-Options "nosniff"
+	header X-Frame-Options "SAMEORIGIN"
 }

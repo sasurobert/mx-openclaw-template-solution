@@ -31,7 +31,7 @@
     },
     "dependencies": {
         "@multiversx/sdk-core": "^15.0.0",
-        "axios": "^1.7.0",
+        "axios": "^1.16.0",
         "dotenv": "^16.4.0"
     },
     "devDependencies": {

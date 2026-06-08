@@ -12,6 +12,9 @@
 #   - Remove `caddy` if you handle HTTPS elsewhere (Cloudflare, nginx, etc.)
 #   - Remove `frontend` if deploying to Vercel
 #   - Add services: database, redis, etc.
+#
+# Security: backend and frontend are NOT exposed to the host. Access only via
+# Caddy on ports 80/443
 # ═══════════════════════════════════════════════════════════════════════════════
 
 services:
@@ -21,8 +24,6 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: openclaw-backend
-    ports:
-      - "${BACKEND_PORT:-4000}:4000"
     env_file: .env
     volumes:
       - ./uploads:/app/uploads # Persistent file uploads
@@ -34,6 +35,8 @@ services:
       start_period: 5s
       retries: 3
     restart: unless-stopped
+    networks:
+      - internal
 
   # ── Frontend (Optional — remove if using Vercel) ─────────────────────────────
   frontend:
@@ -41,12 +44,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: openclaw-frontend
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - internal
 
   # ── Caddy Reverse Proxy (Optional — auto-HTTPS) ─────────────────────────────
   # Remove this if you use Cloudflare, nginx, or don't need HTTPS.
@@ -63,8 +66,16 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+      frontend:
+        condition: service_started
     restart: unless-stopped
+    networks:
+      - internal
 
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  internal:
+    driver: bridge
